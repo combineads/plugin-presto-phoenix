@@ -13,24 +13,13 @@
  */
 package com.facebook.presto.plugin.phoenix;
 
-import com.facebook.presto.Session;
 import com.facebook.presto.testing.MaterializedResult;
 import com.facebook.presto.testing.MaterializedRow;
-import com.facebook.presto.testing.QueryRunner;
 import com.facebook.presto.tests.AbstractTestIntegrationSmokeTest;
-import com.facebook.presto.tests.H2QueryRunner;
-import com.facebook.presto.tests.QueryAssertions;
-import com.google.common.base.Joiner;
-import com.google.common.collect.ImmutableMultiset;
-import com.google.common.collect.Iterables;
-import com.google.common.collect.Multisets;
-import com.google.common.collect.Multiset.Entry;
-import io.airlift.units.Duration;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.Test;
 
 import java.io.IOException;
-import java.util.List;
 
 import static com.facebook.presto.plugin.phoenix.PhoenixQueryRunner.createPhoenixQueryRunner;
 import static com.facebook.presto.plugin.phoenix.PhoenixTestingUtils.execute;
@@ -39,10 +28,7 @@ import static com.facebook.presto.spi.type.VarcharType.VARCHAR;
 import static com.facebook.presto.testing.assertions.Assert.assertEquals;
 import static com.google.common.collect.Iterables.getOnlyElement;
 import static io.airlift.tpch.TpchTable.ORDERS;
-import static io.airlift.units.Duration.nanosSince;
-import static java.lang.String.format;
 import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.fail;
 
 @Test
 public class TestPhoenixIntegrationSmokeTest
@@ -68,122 +54,6 @@ public class TestPhoenixIntegrationSmokeTest
             throws IOException
     {
         phoenixServer.close();
-    }
-
-    @Test
-    public void testSelectAll()
-            throws Exception
-    {
-        String sql = "SELECT * FROM ORDERS";
-
-        QueryRunner actualQueryRunner = queryRunner;
-        Session session = getSession();
-        String actual = sql;
-        // H2QueryRunner h2QueryRunner = h2QueryRunner;
-        String expected  = sql;
-        boolean ensureOrdering = false;
-        boolean compareUpdate = false;
-        long start = System.nanoTime();
-        MaterializedResult actualResults = null;
-        try {
-            actualResults = actualQueryRunner.execute(session, actual).toJdbcTypes();
-        }
-        catch (RuntimeException ex) {
-            fail("Execution of 'actual' query failed: " + actual, ex);
-        }
-        Duration actualTime = nanosSince(start);
-
-        long expectedStart = System.nanoTime();
-        MaterializedResult expectedResults = null;
-        try {
-            expectedResults = h2QueryRunner.execute(session, expected, actualResults.getTypes());
-        }
-        catch (RuntimeException ex) {
-            fail("Execution of 'expected' query failed: " + expected, ex);
-        }
-
-        if (actualResults.getUpdateType().isPresent() || actualResults.getUpdateCount().isPresent()) {
-            if (!actualResults.getUpdateType().isPresent()) {
-                fail("update count present without update type for query: \n" + actual);
-            }
-            if (!compareUpdate) {
-                fail("update type should not be present (use assertUpdate) for query: \n" + actual);
-            }
-        }
-
-        List<MaterializedRow> actualRows = actualResults.getMaterializedRows();
-        List<MaterializedRow> expectedRows = expectedResults.getMaterializedRows();
-
-        ImmutableMultiset<?> actualSet = ImmutableMultiset.copyOf(actualRows);
-        ImmutableMultiset<?> expectedSet = ImmutableMultiset.copyOf(expectedRows);
-        if (!actualSet.equals(expectedSet)) {
-            for (Entry<?> entry : actualSet.entrySet()) {
-                if (expectedSet.count(entry.getElement()) != entry.getCount()) {
-                    System.out.println(actualSet.count(entry.getElement()));
-                    System.out.println(entry.getCount());
-                    System.out.println(entry.getElement().hashCode());
-                    System.out.println(entry.getElement());
-                }
-              }
-        }
-    }
-
-    @Test
-    public void testColumnsInReverseOrder()
-            throws Exception
-    {
-        String sql = "SELECT shippriority, TRIM(clerk), totalprice FROM ORDERS";
-
-        QueryRunner actualQueryRunner = queryRunner;
-        Session session = getSession();
-        String actual = sql;
-        // H2QueryRunner h2QueryRunner = h2QueryRunner;
-        String expected  = sql;
-        boolean ensureOrdering = false;
-        boolean compareUpdate = false;
-        long start = System.nanoTime();
-        MaterializedResult actualResults = null;
-        try {
-            actualResults = actualQueryRunner.execute(session, actual).toJdbcTypes();
-        }
-        catch (RuntimeException ex) {
-            fail("Execution of 'actual' query failed: " + actual, ex);
-        }
-        Duration actualTime = nanosSince(start);
-
-        long expectedStart = System.nanoTime();
-        MaterializedResult expectedResults = null;
-        try {
-            expectedResults = h2QueryRunner.execute(session, expected, actualResults.getTypes());
-        }
-        catch (RuntimeException ex) {
-            fail("Execution of 'expected' query failed: " + expected, ex);
-        }
-
-        if (actualResults.getUpdateType().isPresent() || actualResults.getUpdateCount().isPresent()) {
-            if (!actualResults.getUpdateType().isPresent()) {
-                fail("update count present without update type for query: \n" + actual);
-            }
-            if (!compareUpdate) {
-                fail("update type should not be present (use assertUpdate) for query: \n" + actual);
-            }
-        }
-
-        List<MaterializedRow> actualRows = actualResults.getMaterializedRows();
-        List<MaterializedRow> expectedRows = expectedResults.getMaterializedRows();
-
-        ImmutableMultiset<?> actualSet = ImmutableMultiset.copyOf(actualRows);
-        ImmutableMultiset<?> expectedSet = ImmutableMultiset.copyOf(expectedRows);
-        if (!actualSet.equals(expectedSet)) {
-            for (Entry<?> entry : actualSet.entrySet()) {
-                if (expectedSet.count(entry.getElement()) != entry.getCount()) {
-                    System.out.println(actualSet.count(entry.getElement()));
-                    System.out.println(entry.getCount());
-                    System.out.println(entry.getElement().hashCode());
-                    System.out.println(entry.getElement());
-                }
-              }
-        }
     }
 
     @Test

@@ -8,12 +8,19 @@
 		<version>0.185</version>
 	</parent>
 
+	<repositories>
+		<repository>
+			<id>cloudera</id>
+			<url>https://repository.cloudera.com/artifactory/cloudera-repos/</url>
+		</repository>
+	</repositories>
+
 	<artifactId>presto-phoenix</artifactId>
 	<description>Presto - Phoenix Connector</description>
 	<packaging>presto-plugin</packaging>
 
 	<properties>
-		<phoenix.version>4.11.0-HBase-1.2.0-cdh5.12.1</phoenix.version>
+		<phoenix.version>4.12.0-HBase-1.2.0-cdh5.12.1</phoenix.version>
 		<hbase.version>1.2.0-cdh5.12.1</hbase.version>
 		<hadoop.version>2.6.0-cdh5.12.1</hadoop.version>
 	</properties>
