@@ -172,7 +172,7 @@ public abstract class PhoenixTestingUtils
             "    AVAILQTY INTEGER," +
             "    SUPPLYCOST DECIMAL(15,2)," +
             "    COMMENT VARCHAR(199)" +
-            "    PRIMARY KEY (PARTKEY, SUPPKEY)" +
+            "    CONSTRAINT PK PRIMARY KEY (PARTKEY, SUPPKEY)" +
             " )";
 
     private static final String REGION_SQL = "CREATE TABLE TPCH.REGION (" +
