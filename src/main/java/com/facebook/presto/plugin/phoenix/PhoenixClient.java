@@ -33,12 +33,16 @@ import org.apache.phoenix.jdbc.PhoenixDriver;
 
 import javax.inject.Inject;
 
+import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.stream.Collectors;
 
-import static com.facebook.presto.spi.StandardErrorCode.NOT_SUPPORTED;
+import static com.facebook.presto.plugin.jdbc.JdbcErrorCode.JDBC_ERROR;
+import static com.facebook.presto.spi.StandardErrorCode.NOT_FOUND;
 import static com.google.common.collect.Maps.fromProperties;
+
 import static java.util.Collections.nCopies;
+import static java.util.Locale.ENGLISH;
 
 public class PhoenixClient
         extends BaseJdbcClient
@@ -67,7 +71,75 @@ public class PhoenixClient
     @Override
     public JdbcOutputTableHandle beginCreateTable(ConnectorTableMetadata tableMetadata)
     {
-        throw new PrestoException(NOT_SUPPORTED, "CREATE TABLE not yet supported for Phoenix");
+        SchemaTableName schemaTableName = tableMetadata.getTable();
+        String schema = schemaTableName.getSchemaName();
+        String table = schemaTableName.getTableName();
+
+        if (!getSchemaNames().contains(schema)) {
+            throw new PrestoException(NOT_FOUND, "Schema not found: " + schema);
+        }
+
+        try (Connection connection = driver.connect(connectionUrl, connectionProperties)) {
+            boolean uppercase = connection.getMetaData().storesUpperCaseIdentifiers();
+            if (uppercase) {
+                schema = schema.toUpperCase(ENGLISH);
+                table = table.toUpperCase(ENGLISH);
+            }
+            String catalog = connection.getCatalog();
+
+            StringBuilder sql = new StringBuilder()
+                    .append("CREATE TABLE ")
+                    .append(quoted(catalog, schema, table))
+                    .append(" (");
+            ImmutableList.Builder<String> columnNames = ImmutableList.builder();
+            ImmutableList.Builder<Type> columnTypes = ImmutableList.builder();
+            ImmutableList.Builder<String> columnList = ImmutableList.builder();
+            int index = 0;
+            for (ColumnMetadata column : tableMetadata.getColumns()) {
+                String columnName = column.getName();
+                if (uppercase) {
+                    columnName = columnName.toUpperCase(ENGLISH);
+                }
+                columnNames.add(columnName);
+                columnTypes.add(column.getType());
+                String typeStatement;
+                if (index++ == 0) {
+                    typeStatement = toSqlType(column.getType());
+                    if (typeStatement.toLowerCase().startsWith("varchar")) {
+                        typeStatement += " primary key";
+                    }
+                    else {
+                        typeStatement += " not null primary key";
+                    }
+                }
+                else {
+                    typeStatement = toSqlType(column.getType());
+                }
+                columnList.add(new StringBuilder()
+                        .append(quoted(columnName))
+                        .append(" ")
+                        .append(typeStatement)
+                        .toString());
+            }
+            Joiner.on(", ").appendTo(sql, columnList.build());
+            sql.append(")");
+
+            execute(connection, sql.toString());
+
+            return new JdbcOutputTableHandle(
+                    connectorId,
+                    catalog,
+                    schema,
+                    table,
+                    columnNames.build(),
+                    columnTypes.build(),
+                    "",
+                    connectionUrl,
+                    fromProperties(connectionProperties));
+        }
+        catch (SQLException e) {
+            throw new PrestoException(JDBC_ERROR, e);
+        }
     }
 
     @Override

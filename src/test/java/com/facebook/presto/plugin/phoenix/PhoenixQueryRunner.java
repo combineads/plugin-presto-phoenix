@@ -14,60 +14,142 @@
 package com.facebook.presto.plugin.phoenix;
 
 import com.facebook.presto.Session;
+import com.facebook.presto.metadata.QualifiedObjectName;
+import com.facebook.presto.plugin.phoenix.udf.PhoenixStringFunctions;
 import com.facebook.presto.testing.QueryRunner;
 import com.facebook.presto.tests.DistributedQueryRunner;
 import com.facebook.presto.tpch.TpchPlugin;
-import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.ImmutableSet;
+import io.airlift.log.Logger;
 import io.airlift.tpch.TpchTable;
+import org.intellij.lang.annotations.Language;
 
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.SQLException;
+import java.sql.Statement;
 import java.util.Map;
+import java.util.Set;
 
-import static com.facebook.presto.plugin.phoenix.PhoenixTestingUtils.copyTpchTables;
 import static com.facebook.presto.testing.TestingSession.testSessionBuilder;
 import static com.facebook.presto.tpch.TpchMetadata.TINY_SCHEMA_NAME;
-import static io.airlift.testing.Closeables.closeAllSuppress;
+import static io.airlift.units.Duration.nanosSince;
+
+import static java.lang.String.format;
+import static java.util.concurrent.TimeUnit.SECONDS;
 
 public final class PhoenixQueryRunner
 {
+    private static final Logger LOG = Logger.get(PhoenixQueryRunner.class);
     private static final String TPCH_SCHEMA = "tpch";
+
+    private static boolean tpchLoaded = false;
+    private static TestingPhoenixServer server = new TestingPhoenixServer();
 
     private PhoenixQueryRunner()
     {
     }
 
-    public static QueryRunner createPhoenixQueryRunner(TestingPhoenixServer server, TpchTable<?>... tables)
+    public static QueryRunner createPhoenixQueryRunner(Map<String, String> extraProperties)
             throws Exception
     {
-        return createPhoenixQueryRunner(server, ImmutableList.copyOf(tables));
+        DistributedQueryRunner queryRunner = new DistributedQueryRunner(createSession(), 4, extraProperties);
+
+        queryRunner.installPlugin(new TpchPlugin());
+        queryRunner.createCatalog("tpch", "tpch");
+
+        Map<String, String> properties = ImmutableMap.<String, String>builder()
+                .put("connection-url", server.getJdbcUrl())
+                .put("allow-drop-table", "true")
+                .build();
+
+        queryRunner.installPlugin(new PhoenixPlugin()
+        {
+            @Override
+            public Set<Class<?>> getFunctions()
+            {
+                return ImmutableSet.<Class<?>>builder().add(PhoenixStringFunctions.class).build();
+            }
+        });
+        queryRunner.createCatalog("phoenix", "phoenix", properties);
+
+        if (!tpchLoaded) {
+            createSchema(server, TPCH_SCHEMA);
+            copyTpchTables(queryRunner, "tpch", TINY_SCHEMA_NAME, createSession(), TpchTable.getTables());
+            tpchLoaded = true;
+        }
+
+        return queryRunner;
     }
 
-    public static QueryRunner createPhoenixQueryRunner(TestingPhoenixServer server, Iterable<TpchTable<?>> tables)
-            throws Exception
+    public static void createSchema(TestingPhoenixServer phoenixServer, String schema) throws SQLException
     {
-        DistributedQueryRunner queryRunner = null;
-        try {
-            queryRunner = new DistributedQueryRunner(createSession(), 3);
-
-            queryRunner.installPlugin(new TpchPlugin());
-            queryRunner.createCatalog("tpch", "tpch");
-
-            Map<String, String> properties = ImmutableMap.<String, String>builder()
-                    .put("connection-url", server.getJdbcUrl())
-                    .put("allow-drop-table", "true")
-                    .build();
-
-            queryRunner.installPlugin(new PhoenixPlugin());
-            queryRunner.createCatalog("phoenix", "phoenix", properties);
-
-            copyTpchTables(server, queryRunner, "tpch", TINY_SCHEMA_NAME, createSession(), tables);
-
-            return queryRunner;
+        try (Connection connection = DriverManager.getConnection(phoenixServer.getJdbcUrl());
+                Statement statement = connection.createStatement()) {
+            statement.execute(format("CREATE SCHEMA %s", schema));
         }
-        catch (Throwable e) {
-            closeAllSuppress(e, queryRunner, server);
-            throw e;
+        catch (Exception e) {
+            throw new IllegalStateException("Can't create schema: " + schema, e);
         }
+    }
+
+    private static void copyTpchTables(
+            QueryRunner queryRunner,
+            String sourceCatalog,
+            String sourceSchema,
+            Session session,
+            Iterable<TpchTable<?>> tables)
+    {
+        LOG.info("Loading data from %s.%s...", sourceCatalog, sourceSchema);
+        long startTime = System.nanoTime();
+        for (TpchTable<?> table : tables) {
+            copyTable(queryRunner, sourceCatalog, session, sourceSchema, table);
+        }
+        LOG.info("Loading from %s.%s complete in %s", sourceCatalog, sourceSchema, nanosSince(startTime).toString(SECONDS));
+    }
+
+    private static void copyTable(
+            QueryRunner queryRunner,
+            String catalog,
+            Session session,
+            String schema,
+            TpchTable<?> table)
+    {
+        QualifiedObjectName source = new QualifiedObjectName(catalog, schema, table.getTableName());
+        String target = table.getTableName();
+
+        @Language("SQL")
+        String sql;
+        switch (target) {
+            case "customer":
+                sql = format("CREATE TABLE %s AS SELECT * FROM %s", target, source);
+                break;
+            case "lineitem":
+                sql = format("CREATE TABLE %s AS SELECT UUID() AS uuid, * FROM %s", target, source);
+                break;
+            case "orders":
+                sql = format("CREATE TABLE %s AS SELECT * FROM %s", target, source);
+                break;
+            case "part":
+                sql = format("CREATE TABLE %s AS SELECT * FROM %s", target, source);
+                break;
+            case "partsupp":
+                sql = format("CREATE TABLE %s AS SELECT UUID() AS uuid, * FROM %s", target, source);
+                break;
+            case "supplier":
+                sql = format("CREATE TABLE %s AS SELECT * FROM %s", target, source);
+                break;
+            default:
+                sql = format("CREATE TABLE %s AS SELECT * FROM %s", target, source);
+                break;
+        }
+
+        LOG.info("Running import for %s", target, sql);
+        LOG.info("%s", sql);
+        long start = System.nanoTime();
+        long rows = queryRunner.execute(session, sql).getUpdateCount().getAsLong();
+        LOG.info("Imported %s rows for %s in %s", rows, target, nanosSince(start));
     }
 
     public static Session createSession()

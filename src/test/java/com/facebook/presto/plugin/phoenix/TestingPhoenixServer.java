@@ -13,6 +13,7 @@
  */
 package com.facebook.presto.plugin.phoenix;
 
+import com.facebook.presto.spi.PrestoException;
 import io.airlift.log.Logger;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.HBaseConfiguration;
@@ -20,43 +21,55 @@ import org.apache.hadoop.hbase.HBaseTestingUtility;
 import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.MiniHBaseCluster;
 
-import java.io.Closeable;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 
-import static com.facebook.presto.plugin.phoenix.PhoenixTestingUtils.createSchema;
+import static com.facebook.presto.spi.StandardErrorCode.SERVER_SHUTTING_DOWN;
+
 import static java.lang.String.format;
 
 public final class TestingPhoenixServer
-        implements Closeable
 {
-    private static final Logger log = Logger.get(TestingPhoenixServer.class);
-
+    private static final Logger LOG = Logger.get(TestingPhoenixServer.class);
     private HBaseTestingUtility htu;
     private int port;
 
     private final Configuration conf = HBaseConfiguration.create();
 
-    public TestingPhoenixServer(String... schemas)
-            throws Exception
+    public TestingPhoenixServer()
     {
         this.conf.setInt(HConstants.MASTER_INFO_PORT, -1);
         this.conf.setInt(HConstants.REGIONSERVER_INFO_PORT, -1);
         this.conf.setInt(HConstants.HBASE_CLIENT_RETRIES_NUMBER, 1);
         this.htu = new HBaseTestingUtility(conf);
 
-        this.port = randomPort();
-        this.htu.startMiniZKCluster(1, port);
+        try {
+            this.port = randomPort();
+            this.htu.startMiniZKCluster(1, port);
 
-        MiniHBaseCluster hbm = htu.startMiniHBaseCluster(1, 4);
-        hbm.waitForActiveAndReadyMaster();
-
-        for (String schema : schemas) {
-            createSchema(this, schema);
+            MiniHBaseCluster hbm = htu.startMiniHBaseCluster(1, 4);
+            hbm.waitForActiveAndReadyMaster();
+            LOG.info("Phoenix server ready: %s", getJdbcUrl());
+        }
+        catch (Exception e) {
+            throw new IllegalStateException("Can't start phoenix server.", e);
         }
 
-        log.info("Phoenix server ready: %s", getJdbcUrl());
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            if (htu != null) {
+                try {
+                    LOG.info("Shutting down HBase cluster.");
+                    htu.shutdownMiniHBaseCluster();
+                    htu.shutdownMiniZKCluster();
+                }
+                catch (IOException e) {
+                    Thread.currentThread().interrupt();
+                    throw new PrestoException(SERVER_SHUTTING_DOWN, "Failed to shutdown HTU instance", e);
+                }
+                htu = null;
+            }
+        }));
     }
 
     private static int randomPort()
@@ -65,17 +78,6 @@ public final class TestingPhoenixServer
         try (ServerSocket socket = new ServerSocket()) {
             socket.bind(new InetSocketAddress(0));
             return socket.getLocalPort();
-        }
-    }
-
-    @Override
-    public void close()
-            throws IOException
-    {
-        if (htu != null) {
-            htu.shutdownMiniHBaseCluster();
-            htu.shutdownMiniZKCluster();
-            htu = null;
         }
     }
 

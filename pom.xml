@@ -137,6 +137,12 @@
 			<scope>test</scope>
 		</dependency>
 
+		<dependency>
+			<groupId>org.jetbrains</groupId>
+			<artifactId>annotations</artifactId>
+			<scope>test</scope>
+		</dependency>
+
 		<!-- HBasse Test dependencies -->
 		<dependency>
 			<groupId>org.apache.hbase</groupId>
