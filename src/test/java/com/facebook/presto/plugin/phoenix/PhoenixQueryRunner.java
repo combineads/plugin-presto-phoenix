@@ -15,12 +15,10 @@ package com.facebook.presto.plugin.phoenix;
 
 import com.facebook.presto.Session;
 import com.facebook.presto.metadata.QualifiedObjectName;
-import com.facebook.presto.plugin.phoenix.udf.PhoenixStringFunctions;
 import com.facebook.presto.testing.QueryRunner;
 import com.facebook.presto.tests.DistributedQueryRunner;
 import com.facebook.presto.tpch.TpchPlugin;
 import com.google.common.collect.ImmutableMap;
-import com.google.common.collect.ImmutableSet;
 import io.airlift.log.Logger;
 import io.airlift.tpch.TpchTable;
 import org.intellij.lang.annotations.Language;
@@ -30,7 +28,6 @@ import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.Map;
-import java.util.Set;
 
 import static com.facebook.presto.testing.TestingSession.testSessionBuilder;
 import static com.facebook.presto.tpch.TpchMetadata.TINY_SCHEMA_NAME;
@@ -64,14 +61,7 @@ public final class PhoenixQueryRunner
                 .put("allow-drop-table", "true")
                 .build();
 
-        queryRunner.installPlugin(new PhoenixPlugin()
-        {
-            @Override
-            public Set<Class<?>> getFunctions()
-            {
-                return ImmutableSet.<Class<?>>builder().add(PhoenixStringFunctions.class).build();
-            }
-        });
+        queryRunner.installPlugin(new PhoenixPlugin());
         queryRunner.createCatalog("phoenix", "phoenix", properties);
 
         if (!tpchLoaded) {
