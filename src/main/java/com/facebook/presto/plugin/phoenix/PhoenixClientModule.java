@@ -15,6 +15,12 @@ package com.facebook.presto.plugin.phoenix;
 
 import com.facebook.presto.plugin.jdbc.BaseJdbcConfig;
 import com.facebook.presto.plugin.jdbc.JdbcClient;
+import com.facebook.presto.plugin.jdbc.JdbcConnectorId;
+import com.facebook.presto.plugin.jdbc.JdbcMetadataConfig;
+import com.facebook.presto.plugin.jdbc.JdbcMetadataFactory;
+import com.facebook.presto.plugin.jdbc.JdbcRecordSetProvider;
+import com.facebook.presto.plugin.jdbc.JdbcRecordSinkProvider;
+import com.facebook.presto.plugin.jdbc.JdbcSplitManager;
 import com.google.inject.Binder;
 import com.google.inject.Scopes;
 import io.airlift.configuration.AbstractConfigurationAwareModule;
@@ -23,14 +29,35 @@ import org.apache.phoenix.jdbc.PhoenixDriver;
 import java.sql.SQLException;
 
 import static com.google.common.base.Preconditions.checkArgument;
+import static io.airlift.configuration.ConfigBinder.configBinder;
+
+import static java.util.Objects.requireNonNull;
 
 public class PhoenixClientModule
         extends AbstractConfigurationAwareModule
 {
+    private final String connectorId;
+
+    public PhoenixClientModule(String connectorId)
+    {
+        this.connectorId = requireNonNull(connectorId, "connector id is null");
+    }
+
     @Override
     protected void setup(Binder binder)
     {
+        binder.bind(JdbcConnectorId.class).toInstance(new JdbcConnectorId(connectorId));
+        binder.bind(JdbcSplitManager.class).in(Scopes.SINGLETON);
+        binder.bind(JdbcRecordSetProvider.class).in(Scopes.SINGLETON);
+        binder.bind(JdbcRecordSinkProvider.class).in(Scopes.SINGLETON);
+        configBinder(binder).bindConfig(JdbcMetadataConfig.class);
+
         binder.bind(JdbcClient.class).to(PhoenixClient.class).in(Scopes.SINGLETON);
+        binder.bind(JdbcMetadataFactory.class).to(PhoenixMetadataFactory.class).in(Scopes.SINGLETON);
+
+        binder.bind(PhoenixTableProperties.class).in(Scopes.SINGLETON);
+        binder.bind(PhoenixConnector.class).in(Scopes.SINGLETON);
+
         ensureCatalogIsEmpty(buildConfigObject(BaseJdbcConfig.class).getConnectionUrl());
     }
 

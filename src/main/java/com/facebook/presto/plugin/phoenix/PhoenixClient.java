@@ -29,18 +29,41 @@ import com.facebook.presto.spi.SchemaTableName;
 import com.facebook.presto.spi.type.Type;
 import com.google.common.base.Joiner;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
+import org.apache.hadoop.hbase.HColumnDescriptor;
+import org.apache.hadoop.hbase.HConstants;
+import org.apache.hadoop.hbase.HTableDescriptor;
+import org.apache.hadoop.hbase.client.HBaseAdmin;
+import org.apache.phoenix.jdbc.PhoenixConnection;
 import org.apache.phoenix.jdbc.PhoenixDriver;
+import org.apache.phoenix.query.QueryConstants;
+import org.apache.phoenix.schema.PColumn;
+import org.apache.phoenix.schema.PName;
+import org.apache.phoenix.schema.PTable;
+import org.apache.phoenix.schema.PTableKey;
+import org.apache.phoenix.schema.TableProperty;
 
 import javax.inject.Inject;
 
+import java.io.IOException;
 import java.sql.Connection;
 import java.sql.SQLException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 import static com.facebook.presto.plugin.jdbc.JdbcErrorCode.JDBC_ERROR;
+import static com.facebook.presto.plugin.phoenix.PhoenixTableProperties.ROWKEYS;
+import static com.facebook.presto.plugin.phoenix.PhoenixTableProperties.TABLE_OPTIONS;
 import static com.facebook.presto.spi.StandardErrorCode.NOT_FOUND;
 import static com.google.common.collect.Maps.fromProperties;
+import static org.apache.hadoop.hbase.HConstants.FOREVER;
 
+import static java.util.Collections.emptyList;
 import static java.util.Collections.nCopies;
 import static java.util.Locale.ENGLISH;
 
@@ -75,6 +98,10 @@ public class PhoenixClient
         String schema = schemaTableName.getSchemaName();
         String table = schemaTableName.getTableName();
 
+        Map<String, Object> tableProperties = tableMetadata.getProperties();
+        List<String> rowkeys = PhoenixTableProperties.getRowkeys(tableProperties).orElse(emptyList());
+        Optional<String> tableOptions = PhoenixTableProperties.getTableOptions(tableProperties);
+
         if (!getSchemaNames().contains(schema)) {
             throw new PrestoException(NOT_FOUND, "Schema not found: " + schema);
         }
@@ -94,7 +121,7 @@ public class PhoenixClient
             ImmutableList.Builder<String> columnNames = ImmutableList.builder();
             ImmutableList.Builder<Type> columnTypes = ImmutableList.builder();
             ImmutableList.Builder<String> columnList = ImmutableList.builder();
-            int index = 0;
+            List<String> pkColumnList = new ArrayList<>();
             for (ColumnMetadata column : tableMetadata.getColumns()) {
                 String columnName = column.getName();
                 if (uppercase) {
@@ -103,14 +130,12 @@ public class PhoenixClient
                 columnNames.add(columnName);
                 columnTypes.add(column.getType());
                 String typeStatement;
-                if (index++ == 0) {
-                    typeStatement = toSqlType(column.getType());
-                    if (typeStatement.toLowerCase().startsWith("varchar")) {
-                        typeStatement += " primary key";
-                    }
-                    else {
-                        typeStatement += " not null primary key";
-                    }
+
+                boolean isPkColumn = (rowkeys.size() == 0 && pkColumnList.size() == 0) ||
+                        rowkeys.stream().anyMatch(columnName::equalsIgnoreCase);
+                if (isPkColumn) {
+                    typeStatement = toSqlType(column.getType()) + " not null";
+                    pkColumnList.add(columnName);
                 }
                 else {
                     typeStatement = toSqlType(column.getType());
@@ -121,8 +146,16 @@ public class PhoenixClient
                         .append(typeStatement)
                         .toString());
             }
-            Joiner.on(", ").appendTo(sql, columnList.build());
-            sql.append(")");
+            List<String> columns = columnList.build();
+            Joiner.on(", \n ").appendTo(sql, columns);
+            sql.append("\n CONSTRAINT PK PRIMARY KEY(");
+            Joiner.on(", ").appendTo(sql, pkColumnList);
+            sql.append(")\n)\n");
+
+            if (tableOptions.isPresent()) {
+                final Matcher matcher = Pattern.compile("\\bforever\\b", Pattern.CASE_INSENSITIVE).matcher(tableOptions.get());
+                sql.append(matcher.replaceAll(Integer.toString(FOREVER)).replace('"', '\''));
+            }
 
             execute(connection, sql.toString());
 
@@ -204,5 +237,56 @@ public class PhoenixClient
                 return "timestamp";
         }
         return sqlType;
+    }
+
+    @SuppressWarnings("deprecation")
+    public Map<String, Object> getTableProperties(JdbcTableHandle handle)
+    {
+        ImmutableMap.Builder<String, Object> properties = ImmutableMap.builder();
+
+        try (PhoenixConnection pconn = driver.connect(connectionUrl, connectionProperties).unwrap(PhoenixConnection.class);
+                HBaseAdmin admin = pconn.getQueryServices().getAdmin()) {
+            PTable table = pconn.getTable(new PTableKey(pconn.getTenantId(), quoted(handle.getCatalogName(), handle.getSchemaName(), handle.getTableName())));
+
+            properties.put(ROWKEYS, table.getPKColumns().stream()
+                    .map(PColumn::getName)
+                    .map(PName::getString)
+                    .filter(name -> !name.startsWith("_"))
+                    .collect(Collectors.joining(", ")));
+
+            StringBuilder tableOptions = new StringBuilder();
+            tableOptions.append(TableProperty.SALT_BUCKETS).append("=").append(table.getBucketNum()).append(", ");
+            tableOptions.append(TableProperty.DISABLE_WAL).append("=").append(table.isWALDisabled()).append(", ");
+            tableOptions.append(TableProperty.IMMUTABLE_ROWS).append("=").append(table.isImmutableRows()).append(", ");
+
+            String defaultFamilyName = table.getDefaultFamilyName() == null ? QueryConstants.DEFAULT_COLUMN_FAMILY : table.getDefaultFamilyName().getString();
+            tableOptions.append(TableProperty.DEFAULT_COLUMN_FAMILY).append("=\"").append(defaultFamilyName).append("\", ");
+            tableOptions.append(TableProperty.STORE_NULLS).append("=").append(table.getStoreNulls()).append(", ");
+
+            HTableDescriptor tableDesc = admin.getTableDescriptor(table.getPhysicalName().getBytes());
+
+            HColumnDescriptor[] columnFamilies = tableDesc.getColumnFamilies();
+            for (HColumnDescriptor columnFamily : columnFamilies) {
+                if (columnFamily.getNameAsString().equals(defaultFamilyName)) {
+                    tableOptions.append(HColumnDescriptor.BLOOMFILTER).append("=\"").append(columnFamily.getBloomFilterType()).append("\", ");
+                    tableOptions.append(HConstants.VERSIONS).append("=").append(columnFamily.getMaxVersions()).append(", ");
+                    tableOptions.append(HColumnDescriptor.MIN_VERSIONS).append("=").append(columnFamily.getMaxVersions()).append(", ");
+                    tableOptions.append(HColumnDescriptor.COMPRESSION).append("=\"").append(columnFamily.getCompression()).append("\", ");
+                    int ttl = columnFamily.getTimeToLive();
+                    String ttlExpression = HColumnDescriptor.FOREVER;
+                    if (ttl < FOREVER) {
+                        ttlExpression = Integer.toString(ttl);
+                    }
+                    tableOptions.append(HColumnDescriptor.TTL).append("=").append(ttlExpression);
+                    break;
+                }
+            }
+
+            properties.put(TABLE_OPTIONS, tableOptions.toString());
+        }
+        catch (IOException | SQLException e) {
+            throw new PrestoException(JDBC_ERROR, e);
+        }
+        return properties.build();
     }
 }

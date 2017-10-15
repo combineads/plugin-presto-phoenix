@@ -126,16 +126,16 @@ public final class PhoenixQueryRunner
                 sql = format("CREATE TABLE %s AS SELECT * FROM %s", target, source);
                 break;
             case "lineitem":
-                sql = format("CREATE TABLE %s AS SELECT UUID() AS uuid, * FROM %s", target, source);
+                sql = format("CREATE TABLE %s WITH (ROWKEYS = 'ORDERKEY, LINENUMBER', TABLE_OPTIONS = 'SALT_BUCKETS=10') AS SELECT * FROM %s", target, source);
                 break;
             case "orders":
-                sql = format("CREATE TABLE %s AS SELECT * FROM %s", target, source);
+                sql = format("CREATE TABLE %s WITH (TABLE_OPTIONS = 'SALT_BUCKETS=10') AS SELECT * FROM %s", target, source);
                 break;
             case "part":
                 sql = format("CREATE TABLE %s AS SELECT * FROM %s", target, source);
                 break;
             case "partsupp":
-                sql = format("CREATE TABLE %s AS SELECT UUID() AS uuid, * FROM %s", target, source);
+                sql = format("CREATE TABLE %s WITH (ROWKEYS = 'PARTKEY, SUPPKEY') AS SELECT * FROM %s", target, source);
                 break;
             case "supplier":
                 sql = format("CREATE TABLE %s AS SELECT * FROM %s", target, source);

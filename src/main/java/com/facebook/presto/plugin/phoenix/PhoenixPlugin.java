@@ -13,13 +13,23 @@
  */
 package com.facebook.presto.plugin.phoenix;
 
-import com.facebook.presto.plugin.jdbc.JdbcPlugin;
+import com.facebook.presto.spi.Plugin;
+import com.facebook.presto.spi.connector.ConnectorFactory;
+import com.google.common.collect.ImmutableList;
+
+import static com.google.common.base.MoreObjects.firstNonNull;
 
 public class PhoenixPlugin
-        extends JdbcPlugin
+        implements Plugin
 {
-    public PhoenixPlugin()
+    @Override
+    public Iterable<ConnectorFactory> getConnectorFactories()
     {
-        super("phoenix", new PhoenixClientModule());
+        return ImmutableList.of(new PhoenixConnectorFactory(getClassLoader()));
+    }
+
+    private static ClassLoader getClassLoader()
+    {
+        return firstNonNull(Thread.currentThread().getContextClassLoader(), PhoenixPlugin.class.getClassLoader());
     }
 }
