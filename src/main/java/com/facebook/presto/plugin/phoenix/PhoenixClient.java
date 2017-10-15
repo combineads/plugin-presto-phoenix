@@ -117,7 +117,7 @@ public class PhoenixClient
             StringBuilder sql = new StringBuilder()
                     .append("CREATE TABLE ")
                     .append(quoted(catalog, schema, table))
-                    .append(" (");
+                    .append(" (\n ");
             ImmutableList.Builder<String> columnNames = ImmutableList.builder();
             ImmutableList.Builder<Type> columnTypes = ImmutableList.builder();
             ImmutableList.Builder<String> columnList = ImmutableList.builder();
@@ -254,35 +254,54 @@ public class PhoenixClient
                     .filter(name -> !name.startsWith("_"))
                     .collect(Collectors.joining(", ")));
 
-            StringBuilder tableOptions = new StringBuilder();
-            tableOptions.append(TableProperty.SALT_BUCKETS).append("=").append(table.getBucketNum()).append(", ");
-            tableOptions.append(TableProperty.DISABLE_WAL).append("=").append(table.isWALDisabled()).append(", ");
-            tableOptions.append(TableProperty.IMMUTABLE_ROWS).append("=").append(table.isImmutableRows()).append(", ");
+            ImmutableList.Builder<String> talbeOptions = ImmutableList.builder();
+            if (table.getBucketNum() != null) {
+                talbeOptions.add(TableProperty.SALT_BUCKETS + "=" + table.getBucketNum());
+            }
+            if (table.isWALDisabled()) {
+                talbeOptions.add(TableProperty.DISABLE_WAL + "=" + table.isWALDisabled());
+            }
+            if (table.isImmutableRows()) {
+                talbeOptions.add(TableProperty.IMMUTABLE_ROWS + "=" + table.isImmutableRows());
+            }
 
             String defaultFamilyName = table.getDefaultFamilyName() == null ? QueryConstants.DEFAULT_COLUMN_FAMILY : table.getDefaultFamilyName().getString();
-            tableOptions.append(TableProperty.DEFAULT_COLUMN_FAMILY).append("=\"").append(defaultFamilyName).append("\", ");
-            tableOptions.append(TableProperty.STORE_NULLS).append("=").append(table.getStoreNulls()).append(", ");
+            if (table.getDefaultFamilyName() != null) {
+                talbeOptions.add(TableProperty.DEFAULT_COLUMN_FAMILY + "=" + defaultFamilyName);
+            }
+            if (table.getStoreNulls()) {
+                talbeOptions.add(TableProperty.STORE_NULLS + "=" + table.getStoreNulls());
+            }
 
             HTableDescriptor tableDesc = admin.getTableDescriptor(table.getPhysicalName().getBytes());
 
             HColumnDescriptor[] columnFamilies = tableDesc.getColumnFamilies();
             for (HColumnDescriptor columnFamily : columnFamilies) {
                 if (columnFamily.getNameAsString().equals(defaultFamilyName)) {
-                    tableOptions.append(HColumnDescriptor.BLOOMFILTER).append("=\"").append(columnFamily.getBloomFilterType()).append("\", ");
-                    tableOptions.append(HConstants.VERSIONS).append("=").append(columnFamily.getMaxVersions()).append(", ");
-                    tableOptions.append(HColumnDescriptor.MIN_VERSIONS).append("=").append(columnFamily.getMaxVersions()).append(", ");
-                    tableOptions.append(HColumnDescriptor.COMPRESSION).append("=\"").append(columnFamily.getCompression()).append("\", ");
-                    int ttl = columnFamily.getTimeToLive();
-                    String ttlExpression = HColumnDescriptor.FOREVER;
-                    if (ttl < FOREVER) {
-                        ttlExpression = Integer.toString(ttl);
+                    if (!columnFamily.getBloomFilterType().toString().equals("NONE")) {
+                        talbeOptions.add(HColumnDescriptor.BLOOMFILTER + "=\"" + columnFamily.getBloomFilterType() + "\"");
                     }
-                    tableOptions.append(HColumnDescriptor.TTL).append("=").append(ttlExpression);
+                    if (columnFamily.getMaxVersions() != 1) {
+                        talbeOptions.add(HConstants.VERSIONS + "=" + columnFamily.getMaxVersions());
+                    }
+                    if (columnFamily.getMinVersions() > 0) {
+                        talbeOptions.add(HColumnDescriptor.MIN_VERSIONS + "=" + columnFamily.getMinVersions());
+                    }
+                    if (!columnFamily.getCompression().toString().equals("NONE")) {
+                        talbeOptions.add(HColumnDescriptor.COMPRESSION + "=\"" + columnFamily.getCompression() + "\"");
+                    }
+                    if (columnFamily.getTimeToLive() < FOREVER) {
+                        talbeOptions.add(HColumnDescriptor.TTL + "=" + columnFamily.getTimeToLive());
+                    }
                     break;
                 }
             }
-
-            properties.put(TABLE_OPTIONS, tableOptions.toString());
+            List<String> options = talbeOptions.build();
+            if (options.size() > 0) {
+                StringBuilder tableOptions = new StringBuilder();
+                Joiner.on(", \n ").appendTo(tableOptions, options);
+                properties.put(TABLE_OPTIONS, tableOptions.toString());
+            }
         }
         catch (IOException | SQLException e) {
             throw new PrestoException(JDBC_ERROR, e);
