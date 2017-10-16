@@ -14,46 +14,104 @@
 package com.facebook.presto.plugin.phoenix;
 
 import com.facebook.presto.spi.session.PropertyMetadata;
-import com.google.common.base.Splitter;
+import com.facebook.presto.spi.type.TypeManager;
 import com.google.common.collect.ImmutableList;
 
+import javax.inject.Inject;
+
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
+import static com.facebook.presto.spi.session.PropertyMetadata.booleanSessionProperty;
+import static com.facebook.presto.spi.session.PropertyMetadata.integerSessionProperty;
 import static com.facebook.presto.spi.session.PropertyMetadata.stringSessionProperty;
-
+import static com.facebook.presto.spi.type.TypeSignature.parseTypeSignature;
+import static java.util.Locale.ENGLISH;
 import static java.util.Objects.requireNonNull;
 
 /**
  * Class contains all table properties for the Phoenix connector. Used when creating a table:
  * <p>
- * CREATE TABLE foo (a VARCHAR, b INT)
- * WITH (rowkeys = 'a,b', table_options = 'SALT_BUCKETS=10, DATA_BLOCK_ENCODING="DIFF"');
+ * CREATE TABLE foo (a VARCHAR, b INT) WITH (rowkeys = ARRAYS['a', 'b'], SALT_BUCKETS=10, VERSIONS=5, COMPRESSION='lz');
  */
 public final class PhoenixTableProperties
 {
     public static final String ROWKEYS = "rowkeys";
-    public static final String TABLE_OPTIONS = "table_options";
-    private static final Splitter COMMA_SPLITTER = Splitter.on(',').omitEmptyStrings().trimResults();
+    public static final String SALT_BUCKETS = "salt_buckets";
+    public static final String DISABLE_WAL = "disable_wal";
+    public static final String IMMUTABLE_ROWS = "immutable_rows";
+    public static final String DEFAULT_COLUMN_FAMILY = "default_column_family";
+    public static final String BLOOMFILTER = "bloomfilter";
+    public static final String VERSIONS = "versions";
+    public static final String MIN_VERSIONS = "min_versions";
+    public static final String COMPRESSION = "compression";
+    public static final String TTL = "ttl";
 
     private final List<PropertyMetadata<?>> tableProperties;
 
-    public PhoenixTableProperties()
+    @Inject
+    public PhoenixTableProperties(TypeManager typeManager)
     {
-        PropertyMetadata<String> s1 = stringSessionProperty(
-                ROWKEYS,
-                "The list of columns to be the primary key in a Phoenix table.",
-                null,
-                false);
-
-        PropertyMetadata<String> s2 = stringSessionProperty(
-                TABLE_OPTIONS,
-                "The list of columns to be the table options in a Phoenix table.",
-                null,
-                false);
-
-        tableProperties = ImmutableList.of(s1, s2);
+        tableProperties = ImmutableList.of(
+                new PropertyMetadata<>(
+                        ROWKEYS,
+                        "The list of columns to be the primary key in a Phoenix table.",
+                        typeManager.getType(parseTypeSignature("array(varchar)")),
+                        List.class,
+                        ImmutableList.of(),
+                        false,
+                        value -> ImmutableList.copyOf(((Collection<?>) value).stream()
+                                .map(name -> ((String) name).toLowerCase(ENGLISH))
+                                .collect(Collectors.toList())),
+                        value -> value),
+                integerSessionProperty(
+                        SALT_BUCKETS,
+                        "numeric property causes an extra byte to be transparently prepended to every row key to ensure an evenly distributed read and write load across all region servers.",
+                        null,
+                        false),
+                booleanSessionProperty(
+                        DISABLE_WAL,
+                        "boolean option when true causes HBase not to write data to the write-ahead-log, thus making updates faster at the expense of potentially losing data in the event of a region server failure.",
+                        null,
+                        false),
+                booleanSessionProperty(
+                        IMMUTABLE_ROWS,
+                        "boolean option when true declares that your table has rows which are write-once, append-only.",
+                        null,
+                        false),
+                stringSessionProperty(
+                        DEFAULT_COLUMN_FAMILY,
+                        "string option determines the column family used used when none is specified.",
+                        null,
+                        false),
+                stringSessionProperty(
+                        BLOOMFILTER,
+                        "NONE, ROW or ROWCOL to enable blooms per Column Family.",
+                        null,
+                        false),
+                integerSessionProperty(
+                        VERSIONS,
+                        "The maximum number of row versions to store is configured per column family via HColumnDescriptor.",
+                        null,
+                        false),
+                integerSessionProperty(
+                        MIN_VERSIONS,
+                        "Like maximum number of row versions, the minimum number of row versions to keep is configured per column family via HColumnDescriptor.",
+                        null,
+                        false),
+                stringSessionProperty(
+                        COMPRESSION,
+                        "Compression is compression of HBase blocks using SNAPPY, GZIP, LZ, and others.",
+                        null,
+                        false),
+                integerSessionProperty(
+                        TTL,
+                        "ColumnFamilies can set a TTL length in seconds, and HBase will automatically delete rows once the expiration time is reached.",
+                        null,
+                        false));
     }
 
     public List<PropertyMetadata<?>> getTableProperties()
@@ -61,27 +119,119 @@ public final class PhoenixTableProperties
         return tableProperties;
     }
 
-    public static Optional<List<String>> getRowkeys(Map<String, Object> tableProperties)
+    @SuppressWarnings("unchecked")
+    public static List<String> getRowkeys(Map<String, Object> tableProperties)
     {
         requireNonNull(tableProperties);
 
-        String strRowkeys = (String) tableProperties.get(ROWKEYS);
-        if (strRowkeys == null) {
+        return (List<String>) tableProperties.get(ROWKEYS);
+    }
+
+    public static Optional<Integer> getSaltBuckets(Map<String, Object> tableProperties)
+    {
+        requireNonNull(tableProperties);
+
+        Integer value = (Integer) tableProperties.get(SALT_BUCKETS);
+        if (value == null) {
             return Optional.empty();
         }
 
-        ImmutableList.Builder<String> rowkeys = ImmutableList.builder();
-        for (String rowkey : COMMA_SPLITTER.split(strRowkeys)) {
-            rowkeys.add(rowkey);
-        }
-        return Optional.of(rowkeys.build());
+        return Optional.of(value);
     }
 
-    public static Optional<String> getTableOptions(Map<String, Object> tableProperties)
+    public static Optional<Boolean> getDisableWal(Map<String, Object> tableProperties)
     {
         requireNonNull(tableProperties);
 
-        String tableOptions = (String) tableProperties.get(TABLE_OPTIONS);
-        return Optional.ofNullable(tableOptions);
+        Boolean value = (Boolean) tableProperties.get(DISABLE_WAL);
+        if (value == null) {
+            return Optional.empty();
+        }
+
+        return Optional.of(value);
+    }
+
+    public static Optional<Boolean> getImmutableRows(Map<String, Object> tableProperties)
+    {
+        requireNonNull(tableProperties);
+
+        Boolean value = (Boolean) tableProperties.get(IMMUTABLE_ROWS);
+        if (value == null) {
+            return Optional.empty();
+        }
+
+        return Optional.of(value);
+    }
+
+    public static Optional<String> getDefaultColumnFamily(Map<String, Object> tableProperties)
+    {
+        requireNonNull(tableProperties);
+
+        String value = (String) tableProperties.get(DEFAULT_COLUMN_FAMILY);
+        if (value == null) {
+            return Optional.empty();
+        }
+
+        return Optional.of(value);
+    }
+
+    public static Optional<String> getBloomfilter(Map<String, Object> tableProperties)
+    {
+        requireNonNull(tableProperties);
+
+        String value = (String) tableProperties.get(BLOOMFILTER);
+        if (value == null) {
+            return Optional.empty();
+        }
+
+        return Optional.of(value);
+    }
+
+    public static Optional<Integer> getVersions(Map<String, Object> tableProperties)
+    {
+        requireNonNull(tableProperties);
+
+        Integer value = (Integer) tableProperties.get(VERSIONS);
+        if (value == null) {
+            return Optional.empty();
+        }
+
+        return Optional.of(value);
+    }
+
+    public static Optional<Integer> getMinVersions(Map<String, Object> tableProperties)
+    {
+        requireNonNull(tableProperties);
+
+        Integer value = (Integer) tableProperties.get(MIN_VERSIONS);
+        if (value == null) {
+            return Optional.empty();
+        }
+
+        return Optional.of(value);
+    }
+
+    public static Optional<String> getCompression(Map<String, Object> tableProperties)
+    {
+        requireNonNull(tableProperties);
+
+        String value = (String) tableProperties.get(COMPRESSION);
+        if (value == null) {
+            return Optional.empty();
+        }
+
+        return Optional.of(value);
+    }
+
+    public static Optional<Integer> getTimeToLive(Map<String, Object> tableProperties)
+    {
+        requireNonNull(tableProperties);
+
+        Integer value = (Integer) tableProperties.get(TTL);
+        if (value == null) {
+            return Optional.empty();
+        }
+
+        return Optional.of(value);
     }
 }

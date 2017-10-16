@@ -54,7 +54,7 @@ public class PhoenixConnectorFactory
         requireNonNull(requiredConfig, "requiredConfig is null");
 
         try (ThreadContextClassLoader ignored = new ThreadContextClassLoader(classLoader)) {
-            Bootstrap app = new Bootstrap(new PhoenixClientModule(connectorId));
+            Bootstrap app = new Bootstrap(new PhoenixClientModule(connectorId, context.getTypeManager()));
 
             Injector injector = app
                     .strictConfig()

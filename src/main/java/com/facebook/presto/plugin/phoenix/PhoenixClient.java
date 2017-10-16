@@ -51,21 +51,14 @@ import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 import static com.facebook.presto.plugin.jdbc.JdbcErrorCode.JDBC_ERROR;
-import static com.facebook.presto.plugin.phoenix.PhoenixTableProperties.ROWKEYS;
-import static com.facebook.presto.plugin.phoenix.PhoenixTableProperties.TABLE_OPTIONS;
 import static com.facebook.presto.spi.StandardErrorCode.NOT_FOUND;
 import static com.google.common.collect.Maps.fromProperties;
-import static org.apache.hadoop.hbase.HConstants.FOREVER;
-
-import static java.util.Collections.emptyList;
 import static java.util.Collections.nCopies;
 import static java.util.Locale.ENGLISH;
+import static org.apache.hadoop.hbase.HConstants.FOREVER;
 
 public class PhoenixClient
         extends BaseJdbcClient
@@ -92,6 +85,7 @@ public class PhoenixClient
     }
 
     @Override
+    @SuppressWarnings("deprecation")
     public JdbcOutputTableHandle beginCreateTable(ConnectorTableMetadata tableMetadata)
     {
         SchemaTableName schemaTableName = tableMetadata.getTable();
@@ -99,8 +93,8 @@ public class PhoenixClient
         String table = schemaTableName.getTableName();
 
         Map<String, Object> tableProperties = tableMetadata.getProperties();
-        List<String> rowkeys = PhoenixTableProperties.getRowkeys(tableProperties).orElse(emptyList());
-        Optional<String> tableOptions = PhoenixTableProperties.getTableOptions(tableProperties);
+
+        List<String> rowkeys = new ArrayList<>(PhoenixTableProperties.getRowkeys(tableProperties));
 
         if (!getSchemaNames().contains(schema)) {
             throw new PrestoException(NOT_FOUND, "Schema not found: " + schema);
@@ -121,7 +115,7 @@ public class PhoenixClient
             ImmutableList.Builder<String> columnNames = ImmutableList.builder();
             ImmutableList.Builder<Type> columnTypes = ImmutableList.builder();
             ImmutableList.Builder<String> columnList = ImmutableList.builder();
-            List<String> pkColumnList = new ArrayList<>();
+
             for (ColumnMetadata column : tableMetadata.getColumns()) {
                 String columnName = column.getName();
                 if (uppercase) {
@@ -131,11 +125,12 @@ public class PhoenixClient
                 columnTypes.add(column.getType());
                 String typeStatement;
 
-                boolean isPkColumn = (rowkeys.size() == 0 && pkColumnList.size() == 0) ||
-                        rowkeys.stream().anyMatch(columnName::equalsIgnoreCase);
-                if (isPkColumn) {
+                if (rowkeys.size() == 0) {
                     typeStatement = toSqlType(column.getType()) + " not null";
-                    pkColumnList.add(columnName);
+                    rowkeys.add(columnName);
+                }
+                else if (rowkeys.stream().anyMatch(columnName::equalsIgnoreCase)) {
+                    typeStatement = toSqlType(column.getType()) + " not null";
                 }
                 else {
                     typeStatement = toSqlType(column.getType());
@@ -149,13 +144,20 @@ public class PhoenixClient
             List<String> columns = columnList.build();
             Joiner.on(", \n ").appendTo(sql, columns);
             sql.append("\n CONSTRAINT PK PRIMARY KEY(");
-            Joiner.on(", ").appendTo(sql, pkColumnList);
+            Joiner.on(", ").appendTo(sql, rowkeys);
             sql.append(")\n)\n");
 
-            if (tableOptions.isPresent()) {
-                final Matcher matcher = Pattern.compile("\\bforever\\b", Pattern.CASE_INSENSITIVE).matcher(tableOptions.get());
-                sql.append(matcher.replaceAll(Integer.toString(FOREVER)).replace('"', '\''));
-            }
+            ImmutableList.Builder<String> talbeOptions = ImmutableList.builder();
+            PhoenixTableProperties.getSaltBuckets(tableProperties).ifPresent(value -> talbeOptions.add(TableProperty.SALT_BUCKETS + "=" + value));
+            PhoenixTableProperties.getDisableWal(tableProperties).ifPresent(value -> talbeOptions.add(TableProperty.DISABLE_WAL + "=" + value));
+            PhoenixTableProperties.getImmutableRows(tableProperties).ifPresent(value -> talbeOptions.add(TableProperty.IMMUTABLE_ROWS + "=" + value));
+            PhoenixTableProperties.getDefaultColumnFamily(tableProperties).ifPresent(value -> talbeOptions.add(TableProperty.DEFAULT_COLUMN_FAMILY + "=" + value));
+            PhoenixTableProperties.getBloomfilter(tableProperties).ifPresent(value -> talbeOptions.add(HColumnDescriptor.BLOOMFILTER + "='" + value + "'"));
+            PhoenixTableProperties.getVersions(tableProperties).ifPresent(value -> talbeOptions.add(HConstants.VERSIONS + "=" + value));
+            PhoenixTableProperties.getMinVersions(tableProperties).ifPresent(value -> talbeOptions.add(HColumnDescriptor.MIN_VERSIONS + "=" + value));
+            PhoenixTableProperties.getCompression(tableProperties).ifPresent(value -> talbeOptions.add(HColumnDescriptor.COMPRESSION + "='" + value + "'"));
+            PhoenixTableProperties.getTimeToLive(tableProperties).ifPresent(value -> talbeOptions.add(HColumnDescriptor.TTL + "=" + value));
+            Joiner.on(", \n ").appendTo(sql, talbeOptions.build());
 
             execute(connection, sql.toString());
 
@@ -239,7 +241,6 @@ public class PhoenixClient
         return sqlType;
     }
 
-    @SuppressWarnings("deprecation")
     public Map<String, Object> getTableProperties(JdbcTableHandle handle)
     {
         ImmutableMap.Builder<String, Object> properties = ImmutableMap.builder();
@@ -248,29 +249,29 @@ public class PhoenixClient
                 HBaseAdmin admin = pconn.getQueryServices().getAdmin()) {
             PTable table = pconn.getTable(new PTableKey(pconn.getTenantId(), quoted(handle.getCatalogName(), handle.getSchemaName(), handle.getTableName())));
 
-            properties.put(ROWKEYS, table.getPKColumns().stream()
-                    .map(PColumn::getName)
-                    .map(PName::getString)
-                    .filter(name -> !name.startsWith("_"))
-                    .collect(Collectors.joining(", ")));
+            List<PColumn> pkColumns = table.getPKColumns();
+            if (!pkColumns.isEmpty()) {
+                properties.put(PhoenixTableProperties.ROWKEYS, table.getPKColumns().stream()
+                        .map(PColumn::getName)
+                        .map(PName::getString)
+                        .filter(name -> !name.startsWith("_"))
+                        .collect(Collectors.toList()));
+            }
 
             ImmutableList.Builder<String> talbeOptions = ImmutableList.builder();
             if (table.getBucketNum() != null) {
-                talbeOptions.add(TableProperty.SALT_BUCKETS + "=" + table.getBucketNum());
+                properties.put(PhoenixTableProperties.SALT_BUCKETS, table.getBucketNum());
             }
             if (table.isWALDisabled()) {
-                talbeOptions.add(TableProperty.DISABLE_WAL + "=" + table.isWALDisabled());
+                properties.put(PhoenixTableProperties.DISABLE_WAL, table.isWALDisabled());
             }
             if (table.isImmutableRows()) {
-                talbeOptions.add(TableProperty.IMMUTABLE_ROWS + "=" + table.isImmutableRows());
+                properties.put(PhoenixTableProperties.IMMUTABLE_ROWS, table.isImmutableRows());
             }
 
             String defaultFamilyName = table.getDefaultFamilyName() == null ? QueryConstants.DEFAULT_COLUMN_FAMILY : table.getDefaultFamilyName().getString();
             if (table.getDefaultFamilyName() != null) {
-                talbeOptions.add(TableProperty.DEFAULT_COLUMN_FAMILY + "=" + defaultFamilyName);
-            }
-            if (table.getStoreNulls()) {
-                talbeOptions.add(TableProperty.STORE_NULLS + "=" + table.getStoreNulls());
+                properties.put(PhoenixTableProperties.DEFAULT_COLUMN_FAMILY, defaultFamilyName);
             }
 
             HTableDescriptor tableDesc = admin.getTableDescriptor(table.getPhysicalName().getBytes());
@@ -279,19 +280,19 @@ public class PhoenixClient
             for (HColumnDescriptor columnFamily : columnFamilies) {
                 if (columnFamily.getNameAsString().equals(defaultFamilyName)) {
                     if (!columnFamily.getBloomFilterType().toString().equals("NONE")) {
-                        talbeOptions.add(HColumnDescriptor.BLOOMFILTER + "=\"" + columnFamily.getBloomFilterType() + "\"");
+                        properties.put(PhoenixTableProperties.BLOOMFILTER, columnFamily.getBloomFilterType());
                     }
                     if (columnFamily.getMaxVersions() != 1) {
-                        talbeOptions.add(HConstants.VERSIONS + "=" + columnFamily.getMaxVersions());
+                        properties.put(PhoenixTableProperties.VERSIONS, columnFamily.getMaxVersions());
                     }
                     if (columnFamily.getMinVersions() > 0) {
-                        talbeOptions.add(HColumnDescriptor.MIN_VERSIONS + "=" + columnFamily.getMinVersions());
+                        properties.put(PhoenixTableProperties.MIN_VERSIONS, columnFamily.getMinVersions());
                     }
                     if (!columnFamily.getCompression().toString().equals("NONE")) {
-                        talbeOptions.add(HColumnDescriptor.COMPRESSION + "=\"" + columnFamily.getCompression() + "\"");
+                        properties.put(PhoenixTableProperties.COMPRESSION, columnFamily.getCompression());
                     }
                     if (columnFamily.getTimeToLive() < FOREVER) {
-                        talbeOptions.add(HColumnDescriptor.TTL + "=" + columnFamily.getTimeToLive());
+                        properties.put(PhoenixTableProperties.TTL, columnFamily.getTimeToLive());
                     }
                     break;
                 }
@@ -300,7 +301,6 @@ public class PhoenixClient
             if (options.size() > 0) {
                 StringBuilder tableOptions = new StringBuilder();
                 Joiner.on(", \n ").appendTo(tableOptions, options);
-                properties.put(TABLE_OPTIONS, tableOptions.toString());
             }
         }
         catch (IOException | SQLException e) {

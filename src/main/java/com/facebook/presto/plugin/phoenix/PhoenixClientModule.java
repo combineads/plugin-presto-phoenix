@@ -21,6 +21,7 @@ import com.facebook.presto.plugin.jdbc.JdbcMetadataFactory;
 import com.facebook.presto.plugin.jdbc.JdbcRecordSetProvider;
 import com.facebook.presto.plugin.jdbc.JdbcRecordSinkProvider;
 import com.facebook.presto.plugin.jdbc.JdbcSplitManager;
+import com.facebook.presto.spi.type.TypeManager;
 import com.google.inject.Binder;
 import com.google.inject.Scopes;
 import io.airlift.configuration.AbstractConfigurationAwareModule;
@@ -37,10 +38,12 @@ public class PhoenixClientModule
         extends AbstractConfigurationAwareModule
 {
     private final String connectorId;
+    private final TypeManager typeManager;
 
-    public PhoenixClientModule(String connectorId)
+    public PhoenixClientModule(String connectorId, TypeManager typeManager)
     {
         this.connectorId = requireNonNull(connectorId, "connector id is null");
+        this.typeManager = typeManager;
     }
 
     @Override
@@ -56,6 +59,7 @@ public class PhoenixClientModule
         binder.bind(JdbcMetadataFactory.class).to(PhoenixMetadataFactory.class).in(Scopes.SINGLETON);
 
         binder.bind(PhoenixTableProperties.class).in(Scopes.SINGLETON);
+        binder.bind(TypeManager.class).toInstance(typeManager);
         binder.bind(PhoenixConnector.class).in(Scopes.SINGLETON);
 
         ensureCatalogIsEmpty(buildConfigObject(BaseJdbcConfig.class).getConnectionUrl());
