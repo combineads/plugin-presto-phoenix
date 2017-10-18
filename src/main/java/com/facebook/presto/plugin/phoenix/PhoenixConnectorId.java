@@ -13,27 +13,41 @@
  */
 package com.facebook.presto.plugin.phoenix;
 
-import com.facebook.presto.plugin.phoenix.PhoenixMetadataConfig;
-
-import javax.inject.Inject;
+import java.util.Objects;
 
 import static java.util.Objects.requireNonNull;
 
-public class PhoenixMetadataFactory
+public final class PhoenixConnectorId
 {
-    private final PhoenixClient phoenixClient;
-    private final boolean allowDropTable;
+    private final String id;
 
-    @Inject
-    public PhoenixMetadataFactory(PhoenixClient phoenixClient, PhoenixMetadataConfig config)
+    public PhoenixConnectorId(String id)
     {
-        this.phoenixClient = requireNonNull(phoenixClient, "phoenixClient is null");
-        requireNonNull(config, "config is null");
-        this.allowDropTable = config.isAllowDropTable();
+        this.id = requireNonNull(id, "id is null");
     }
 
-    public PhoenixMetadata create()
+    @Override
+    public String toString()
     {
-        return new PhoenixMetadata(phoenixClient, allowDropTable);
+        return id;
+    }
+
+    @Override
+    public int hashCode()
+    {
+        return Objects.hash(id);
+    }
+
+    @Override
+    public boolean equals(Object obj)
+    {
+        if (this == obj) {
+            return true;
+        }
+        if ((obj == null) || (getClass() != obj.getClass())) {
+            return false;
+        }
+        PhoenixConnectorId other = (PhoenixConnectorId) obj;
+        return Objects.equals(this.id, other.id);
     }
 }

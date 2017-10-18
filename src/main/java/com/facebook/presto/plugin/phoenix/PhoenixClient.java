@@ -13,29 +13,36 @@
  */
 package com.facebook.presto.plugin.phoenix;
 
-import com.facebook.presto.plugin.jdbc.BaseJdbcClient;
-import com.facebook.presto.plugin.jdbc.BaseJdbcConfig;
-import com.facebook.presto.plugin.jdbc.JdbcConnectorId;
-import com.facebook.presto.plugin.jdbc.JdbcOutputTableHandle;
-import com.facebook.presto.plugin.jdbc.JdbcSplit;
-import com.facebook.presto.plugin.jdbc.JdbcTableHandle;
-import com.facebook.presto.plugin.jdbc.JdbcTableLayoutHandle;
+import com.facebook.presto.spi.ColumnHandle;
 import com.facebook.presto.spi.ColumnMetadata;
 import com.facebook.presto.spi.ConnectorSplitSource;
 import com.facebook.presto.spi.ConnectorTableMetadata;
 import com.facebook.presto.spi.FixedSplitSource;
 import com.facebook.presto.spi.PrestoException;
 import com.facebook.presto.spi.SchemaTableName;
+import com.facebook.presto.spi.TableNotFoundException;
+import com.facebook.presto.spi.predicate.TupleDomain;
+import com.facebook.presto.spi.type.CharType;
 import com.facebook.presto.spi.type.Type;
+import com.facebook.presto.spi.type.VarcharType;
 import com.google.common.base.Joiner;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.ImmutableSet;
+import io.airlift.log.Logger;
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.hbase.HBaseConfiguration;
 import org.apache.hadoop.hbase.HColumnDescriptor;
 import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.HTableDescriptor;
 import org.apache.hadoop.hbase.client.HBaseAdmin;
+import org.apache.hadoop.mapreduce.InputSplit;
+import org.apache.hadoop.mapreduce.Job;
 import org.apache.phoenix.jdbc.PhoenixConnection;
 import org.apache.phoenix.jdbc.PhoenixDriver;
+import org.apache.phoenix.mapreduce.PhoenixInputFormat;
+import org.apache.phoenix.mapreduce.PhoenixInputSplit;
+import org.apache.phoenix.mapreduce.util.PhoenixConfigurationUtil;
 import org.apache.phoenix.query.QueryConstants;
 import org.apache.phoenix.schema.PColumn;
 import org.apache.phoenix.schema.PName;
@@ -43,50 +50,252 @@ import org.apache.phoenix.schema.PTable;
 import org.apache.phoenix.schema.PTableKey;
 import org.apache.phoenix.schema.TableProperty;
 
+import javax.annotation.Nullable;
 import javax.inject.Inject;
 
 import java.io.IOException;
 import java.sql.Connection;
+import java.sql.DatabaseMetaData;
+import java.sql.Driver;
+import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Statement;
+import java.sql.Types;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Properties;
+import java.util.Set;
 import java.util.stream.Collectors;
 
-import static com.facebook.presto.plugin.jdbc.JdbcErrorCode.JDBC_ERROR;
+import static com.facebook.presto.plugin.phoenix.PhoenixErrorCode.PHOENIX_ERROR;
 import static com.facebook.presto.spi.StandardErrorCode.NOT_FOUND;
-import static com.google.common.collect.Maps.fromProperties;
+import static com.facebook.presto.spi.StandardErrorCode.NOT_SUPPORTED;
+import static com.facebook.presto.spi.type.BigintType.BIGINT;
+import static com.facebook.presto.spi.type.BooleanType.BOOLEAN;
+import static com.facebook.presto.spi.type.CharType.createCharType;
+import static com.facebook.presto.spi.type.DateType.DATE;
+import static com.facebook.presto.spi.type.DoubleType.DOUBLE;
+import static com.facebook.presto.spi.type.IntegerType.INTEGER;
+import static com.facebook.presto.spi.type.RealType.REAL;
+import static com.facebook.presto.spi.type.SmallintType.SMALLINT;
+import static com.facebook.presto.spi.type.TimeType.TIME;
+import static com.facebook.presto.spi.type.TimeWithTimeZoneType.TIME_WITH_TIME_ZONE;
+import static com.facebook.presto.spi.type.TimestampType.TIMESTAMP;
+import static com.facebook.presto.spi.type.TimestampWithTimeZoneType.TIMESTAMP_WITH_TIME_ZONE;
+import static com.facebook.presto.spi.type.TinyintType.TINYINT;
+import static com.facebook.presto.spi.type.VarbinaryType.VARBINARY;
+import static com.facebook.presto.spi.type.VarcharType.createUnboundedVarcharType;
+import static com.facebook.presto.spi.type.VarcharType.createVarcharType;
+import static com.google.common.base.Preconditions.checkArgument;
+import static com.google.common.base.Strings.isNullOrEmpty;
+import static com.google.common.collect.Iterables.getOnlyElement;
+import static java.lang.Math.min;
 import static java.util.Collections.nCopies;
 import static java.util.Locale.ENGLISH;
+import static java.util.Objects.requireNonNull;
 import static org.apache.hadoop.hbase.HConstants.FOREVER;
+import static org.apache.phoenix.mapreduce.util.PhoenixConfigurationUtil.MAPREDUCE_SPLIT_BY_STATS;
 
 public class PhoenixClient
-        extends BaseJdbcClient
 {
+    private static final Logger log = Logger.get(PhoenixClient.class);
+
+    private static final Map<Type, String> SQL_TYPES = ImmutableMap.<Type, String>builder()
+            .put(BOOLEAN, "boolean")
+            .put(BIGINT, "bigint")
+            .put(INTEGER, "integer")
+            .put(SMALLINT, "smallint")
+            .put(TINYINT, "tinyint")
+            .put(DOUBLE, "double")
+            .put(REAL, "float")
+            .put(VARBINARY, "varbinary")
+            .put(DATE, "date")
+            .put(TIME, "time")
+            .put(TIME_WITH_TIME_ZONE, "time")
+            .put(TIMESTAMP, "timestamp")
+            .put(TIMESTAMP_WITH_TIME_ZONE, "timestamp")
+            .build();
+
+    protected final String connectorId;
+    protected final Driver driver = new PhoenixDriver();
+    protected final String connectionUrl;
+
     @Inject
-    public PhoenixClient(JdbcConnectorId connectorId, BaseJdbcConfig config) throws SQLException
+    public PhoenixClient(PhoenixConnectorId connectorId, PhoenixConfig config) throws SQLException
     {
-        super(connectorId, config, "", new PhoenixDriver());
+        this.connectorId = requireNonNull(connectorId, "connectorId is null").toString();
+
+        requireNonNull(config, "config is null");
+        connectionUrl = config.getConnectionUrl();
     }
 
-    @Override
-    public ConnectorSplitSource getSplits(JdbcTableLayoutHandle layoutHandle)
+    public Set<String> getSchemaNames()
     {
-        JdbcTableHandle tableHandle = layoutHandle.getTable();
-        JdbcSplit jdbcSplit = new JdbcSplit(
-                connectorId,
-                tableHandle.getCatalogName(),
-                tableHandle.getSchemaName(),
-                tableHandle.getTableName(),
-                connectionUrl,
-                fromProperties(connectionProperties),
-                layoutHandle.getTupleDomain());
-        return new FixedSplitSource(ImmutableList.of(jdbcSplit));
+        try (Connection connection = getConnection();
+                ResultSet resultSet = connection.getMetaData().getSchemas()) {
+            ImmutableSet.Builder<String> schemaNames = ImmutableSet.builder();
+            while (resultSet.next()) {
+                String schemaName = resultSet.getString("TABLE_SCHEM").toLowerCase(ENGLISH);
+                // skip internal schemas
+                if (!schemaName.equals("information_schema")) {
+                    schemaNames.add(schemaName);
+                }
+            }
+            return schemaNames.build();
+        }
+        catch (SQLException e) {
+            throw new PrestoException(PHOENIX_ERROR, e);
+        }
     }
 
-    @Override
+    public List<SchemaTableName> getTableNames(@Nullable String schema)
+    {
+        try (Connection connection = getConnection()) {
+            DatabaseMetaData metadata = connection.getMetaData();
+            if (metadata.storesUpperCaseIdentifiers() && (schema != null)) {
+                schema = schema.toUpperCase(ENGLISH);
+            }
+            try (ResultSet resultSet = getTables(connection, schema, null)) {
+                ImmutableList.Builder<SchemaTableName> list = ImmutableList.builder();
+                while (resultSet.next()) {
+                    list.add(getSchemaTableName(resultSet));
+                }
+                return list.build();
+            }
+        }
+        catch (SQLException e) {
+            throw new PrestoException(PHOENIX_ERROR, e);
+        }
+    }
+
+    @Nullable
+    public PhoenixTableHandle getTableHandle(SchemaTableName schemaTableName)
+    {
+        try (Connection connection = getConnection()) {
+            DatabaseMetaData metadata = connection.getMetaData();
+            String schemaName = schemaTableName.getSchemaName();
+            String tableName = schemaTableName.getTableName();
+            if (metadata.storesUpperCaseIdentifiers()) {
+                schemaName = schemaName.toUpperCase(ENGLISH);
+                tableName = tableName.toUpperCase(ENGLISH);
+            }
+            try (ResultSet resultSet = getTables(connection, schemaName, tableName)) {
+                List<PhoenixTableHandle> tableHandles = new ArrayList<>();
+                while (resultSet.next()) {
+                    tableHandles.add(new PhoenixTableHandle(
+                            connectorId,
+                            schemaTableName,
+                            resultSet.getString("TABLE_CAT"),
+                            resultSet.getString("TABLE_SCHEM"),
+                            resultSet.getString("TABLE_NAME")));
+                }
+                if (tableHandles.isEmpty()) {
+                    return null;
+                }
+                if (tableHandles.size() > 1) {
+                    throw new PrestoException(NOT_SUPPORTED, "Multiple tables matched: " + schemaTableName);
+                }
+                return getOnlyElement(tableHandles);
+            }
+        }
+        catch (SQLException e) {
+            throw new PrestoException(PHOENIX_ERROR, e);
+        }
+    }
+
+    public List<PhoenixColumnHandle> getColumns(PhoenixTableHandle tableHandle)
+    {
+        try (Connection connection = getConnection()) {
+            try (ResultSet resultSet = getColumns(tableHandle, connection.getMetaData())) {
+                List<PhoenixColumnHandle> columns = new ArrayList<>();
+                boolean found = false;
+                while (resultSet.next()) {
+                    found = true;
+                    Type columnType = toPrestoType(resultSet.getInt("DATA_TYPE"), resultSet.getInt("COLUMN_SIZE"));
+                    // skip unsupported column types
+                    if (columnType != null) {
+                        String columnName = resultSet.getString("COLUMN_NAME");
+                        columns.add(new PhoenixColumnHandle(connectorId, columnName, columnType));
+                    }
+                }
+                if (!found) {
+                    throw new TableNotFoundException(tableHandle.getSchemaTableName());
+                }
+                if (columns.isEmpty()) {
+                    throw new PrestoException(NOT_SUPPORTED, "Table has no supported column types: " + tableHandle.getSchemaTableName());
+                }
+                return ImmutableList.copyOf(columns);
+            }
+        }
+        catch (SQLException e) {
+            throw new PrestoException(PHOENIX_ERROR, e);
+        }
+    }
+
+    public ConnectorSplitSource getSplits(PhoenixTableLayoutHandle layoutHandle)
+    {
+        PhoenixTableHandle handle = layoutHandle.getTable();
+        try (PhoenixConnection connection = getConnection()) {
+            String inputQuery = buildSql(connection,
+                    handle.getCatalogName(),
+                    handle.getSchemaName(),
+                    handle.getTableName(),
+                    layoutHandle.getTupleDomain(),
+                    getColumns(handle));
+
+            List<InputSplit> splits = buildInputSplit(connection, inputQuery);
+
+            return new FixedSplitSource(splits.stream().map(split -> (PhoenixInputSplit) split).map(split -> {
+                return new PhoenixSplit(
+                        connectorId,
+                        handle.getCatalogName(),
+                        handle.getSchemaName(),
+                        handle.getTableName(),
+                        layoutHandle.getTupleDomain(),
+                        split);
+            }).collect(Collectors.toList()));
+        }
+        catch (IOException | InterruptedException | SQLException e) {
+            throw new PrestoException(PHOENIX_ERROR, e);
+        }
+    }
+
+    public PhoenixConnection getConnection()
+            throws SQLException
+    {
+        return driver.connect(connectionUrl, new Properties()).unwrap(PhoenixConnection.class);
+    }
+
+    public String buildSql(PhoenixConnection connection,
+            String catalogName,
+            String schemaName,
+            String tableName,
+            TupleDomain<ColumnHandle> TupleDomain,
+            List<PhoenixColumnHandle> columnHandles)
+            throws SQLException, IOException, InterruptedException
+    {
+        return new QueryBuilder().buildSql(
+                connection,
+                catalogName,
+                schemaName,
+                tableName,
+                columnHandles,
+                TupleDomain);
+    }
+
+    public static List<InputSplit> buildInputSplit(PhoenixConnection connection, String inputQuery)
+            throws SQLException, IOException, InterruptedException
+    {
+
+        Configuration conf = HBaseConfiguration.create(connection.getQueryServices().getConfiguration());
+        PhoenixConfigurationUtil.setInputQuery(conf, inputQuery);
+        conf.setBoolean(MAPREDUCE_SPLIT_BY_STATS, false);
+        return new PhoenixInputFormat<>().getSplits(Job.getInstance(conf));
+    }
+
     @SuppressWarnings("deprecation")
-    public JdbcOutputTableHandle beginCreateTable(ConnectorTableMetadata tableMetadata)
+    public PhoenixOutputTableHandle createTable(ConnectorTableMetadata tableMetadata)
     {
         SchemaTableName schemaTableName = tableMetadata.getTable();
         String schema = schemaTableName.getSchemaName();
@@ -100,7 +309,7 @@ public class PhoenixClient
             throw new PrestoException(NOT_FOUND, "Schema not found: " + schema);
         }
 
-        try (Connection connection = driver.connect(connectionUrl, connectionProperties)) {
+        try (Connection connection = getConnection()) {
             boolean uppercase = connection.getMetaData().storesUpperCaseIdentifiers();
             if (uppercase) {
                 schema = schema.toUpperCase(ENGLISH);
@@ -110,7 +319,7 @@ public class PhoenixClient
 
             StringBuilder sql = new StringBuilder()
                     .append("CREATE TABLE ")
-                    .append(quoted(catalog, schema, table))
+                    .append(getFullTableName(catalog, schema, table))
                     .append(" (\n ");
             ImmutableList.Builder<String> columnNames = ImmutableList.builder();
             ImmutableList.Builder<Type> columnTypes = ImmutableList.builder();
@@ -136,7 +345,7 @@ public class PhoenixClient
                     typeStatement = toSqlType(column.getType());
                 }
                 columnList.add(new StringBuilder()
-                        .append(quoted(columnName))
+                        .append(columnName)
                         .append(" ")
                         .append(typeStatement)
                         .toString());
@@ -161,51 +370,47 @@ public class PhoenixClient
 
             execute(connection, sql.toString());
 
-            return new JdbcOutputTableHandle(
+            return new PhoenixOutputTableHandle(
                     connectorId,
                     catalog,
                     schema,
                     table,
                     columnNames.build(),
-                    columnTypes.build(),
-                    "",
-                    connectionUrl,
-                    fromProperties(connectionProperties));
+                    columnTypes.build());
         }
         catch (SQLException e) {
-            throw new PrestoException(JDBC_ERROR, e);
+            throw new PrestoException(PHOENIX_ERROR, e);
         }
     }
 
-    @Override
-    public JdbcOutputTableHandle beginInsertTable(ConnectorTableMetadata tableMetadata)
+    public PhoenixOutputTableHandle beginInsertTable(ConnectorTableMetadata tableMetadata)
     {
-        return new JdbcOutputTableHandle(
+        return new PhoenixOutputTableHandle(
                 connectorId,
                 "",
                 tableMetadata.getTable().getSchemaName(),
                 tableMetadata.getTable().getTableName(),
                 tableMetadata.getColumns().stream().map(ColumnMetadata::getName).collect(Collectors.toList()),
-                tableMetadata.getColumns().stream().map(ColumnMetadata::getType).collect(Collectors.toList()),
-                "",
-                connectionUrl,
-                fromProperties(connectionProperties));
+                tableMetadata.getColumns().stream().map(ColumnMetadata::getType).collect(Collectors.toList()));
     }
 
-    @Override
-    public void commitCreateTable(JdbcOutputTableHandle handle)
+    public void dropTable(PhoenixTableHandle handle)
     {
+        StringBuilder sql = new StringBuilder()
+                .append("DROP TABLE ")
+                .append(getFullTableName(handle.getCatalogName(), handle.getSchemaName(), handle.getTableName()));
+
+        try (Connection connection = getConnection()) {
+            execute(connection, sql.toString());
+        }
+        catch (SQLException e) {
+            throw new PrestoException(PHOENIX_ERROR, e);
+        }
     }
 
-    @Override
-    public void finishInsertTable(JdbcOutputTableHandle handle)
+    public void rollbackCreateTable(PhoenixOutputTableHandle handle)
     {
-    }
-
-    @Override
-    public void rollbackCreateTable(JdbcOutputTableHandle handle)
-    {
-        dropTable(new JdbcTableHandle(
+        dropTable(new PhoenixTableHandle(
                 handle.getConnectorId(),
                 new SchemaTableName(handle.getSchemaName(), handle.getTableName()),
                 handle.getCatalogName(),
@@ -213,41 +418,157 @@ public class PhoenixClient
                 handle.getTableName()));
     }
 
-    @Override
-    public String buildInsertSql(JdbcOutputTableHandle handle)
+    public String buildInsertSql(PhoenixOutputTableHandle handle)
     {
         String vars = Joiner.on(',').join(nCopies(handle.getColumnNames().size(), "?"));
         return new StringBuilder()
                 .append("UPSERT INTO ")
-                .append(quoted(handle.getCatalogName(), handle.getSchemaName(), handle.getTableName()))
+                .append(getFullTableName(handle.getCatalogName(), handle.getSchemaName(), handle.getTableName()))
                 .append(" VALUES (").append(vars).append(")")
                 .toString();
     }
 
-    @Override
-    protected String toSqlType(Type type)
+    protected ResultSet getTables(Connection connection, String schemaName, String tableName)
+            throws SQLException
     {
-        String sqlType = super.toSqlType(type);
-        switch (sqlType) {
-            case "double precision":
-                return "double";
-            case "real":
-                return "float";
-            case "time with timezone":
-                return "time";
-            case "timestamp with timezone":
-                return "timestamp";
-        }
-        return sqlType;
+        DatabaseMetaData metadata = connection.getMetaData();
+        String escape = metadata.getSearchStringEscape();
+        return metadata.getTables(
+                connection.getCatalog(),
+                escapeNamePattern(schemaName, escape),
+                escapeNamePattern(tableName, escape),
+                new String[] { "TABLE", "VIEW" });
     }
 
-    public Map<String, Object> getTableProperties(JdbcTableHandle handle)
+    protected SchemaTableName getSchemaTableName(ResultSet resultSet)
+            throws SQLException
+    {
+        return new SchemaTableName(
+                resultSet.getString("TABLE_SCHEM").toLowerCase(ENGLISH),
+                resultSet.getString("TABLE_NAME").toLowerCase(ENGLISH));
+    }
+
+    protected void execute(Connection connection, String query)
+            throws SQLException
+    {
+        try (Statement statement = connection.createStatement()) {
+            log.debug("Execute: %s", query);
+            statement.execute(query);
+        }
+    }
+
+    protected Type toPrestoType(int phoenixType, int columnSize)
+    {
+        switch (phoenixType) {
+            case Types.BIT:
+            case Types.BOOLEAN:
+                return BOOLEAN;
+            case Types.TINYINT:
+                return TINYINT;
+            case Types.SMALLINT:
+                return SMALLINT;
+            case Types.INTEGER:
+                return INTEGER;
+            case Types.BIGINT:
+                return BIGINT;
+            case Types.REAL:
+                return REAL;
+            case Types.FLOAT:
+            case Types.DOUBLE:
+            case Types.NUMERIC:
+            case Types.DECIMAL:
+                return DOUBLE;
+            case Types.CHAR:
+            case Types.NCHAR:
+                return createCharType(min(columnSize, CharType.MAX_LENGTH));
+            case Types.VARCHAR:
+            case Types.NVARCHAR:
+            case Types.LONGVARCHAR:
+            case Types.LONGNVARCHAR:
+                if (columnSize > VarcharType.MAX_LENGTH) {
+                    return createUnboundedVarcharType();
+                }
+                return createVarcharType(columnSize);
+            case Types.BINARY:
+            case Types.VARBINARY:
+            case Types.LONGVARBINARY:
+                return VARBINARY;
+            case Types.DATE:
+                return DATE;
+            case Types.TIME:
+                return TIME;
+            case Types.TIMESTAMP:
+                return TIMESTAMP;
+        }
+        return null;
+    }
+
+    protected String toSqlType(Type type)
+    {
+        if (type instanceof VarcharType) {
+            if (((VarcharType) type).isUnbounded()) {
+                return "varchar";
+            }
+            return "varchar(" + ((VarcharType) type).getLengthSafe() + ")";
+        }
+        if (type instanceof CharType) {
+            if (((CharType) type).getLength() == CharType.MAX_LENGTH) {
+                return "char";
+            }
+            return "char(" + ((CharType) type).getLength() + ")";
+        }
+
+        String sqlType = SQL_TYPES.get(type);
+        if (sqlType != null) {
+            return sqlType;
+        }
+        throw new PrestoException(NOT_SUPPORTED, "Unsupported column type: " + type.getTypeSignature());
+    }
+
+    protected String getFullTableName(String catalog, String schema, String table)
+    {
+        StringBuilder sb = new StringBuilder();
+        if (!isNullOrEmpty(catalog)) {
+            sb.append(catalog).append(".");
+        }
+        if (!isNullOrEmpty(schema)) {
+            sb.append(schema).append(".");
+        }
+        sb.append(table);
+        return sb.toString();
+    }
+
+    protected static String escapeNamePattern(String name, String escape)
+    {
+        if ((name == null) || (escape == null)) {
+            return name;
+        }
+        checkArgument(!escape.equals("_"), "Escape string must not be '_'");
+        checkArgument(!escape.equals("%"), "Escape string must not be '%'");
+        name = name.replace(escape, escape + escape);
+        name = name.replace("_", escape + "_");
+        name = name.replace("%", escape + "%");
+        return name;
+    }
+
+    private static ResultSet getColumns(PhoenixTableHandle tableHandle, DatabaseMetaData metadata)
+            throws SQLException
+    {
+        String escape = metadata.getSearchStringEscape();
+        return metadata.getColumns(
+                tableHandle.getCatalogName(),
+                escapeNamePattern(tableHandle.getSchemaName(), escape),
+                escapeNamePattern(tableHandle.getTableName(), escape),
+                null);
+    }
+
+    public Map<String, Object> getTableProperties(PhoenixTableHandle handle)
     {
         ImmutableMap.Builder<String, Object> properties = ImmutableMap.builder();
 
-        try (PhoenixConnection pconn = driver.connect(connectionUrl, connectionProperties).unwrap(PhoenixConnection.class);
+        try (PhoenixConnection pconn = getConnection();
                 HBaseAdmin admin = pconn.getQueryServices().getAdmin()) {
-            PTable table = pconn.getTable(new PTableKey(pconn.getTenantId(), quoted(handle.getCatalogName(), handle.getSchemaName(), handle.getTableName())));
+            PTable table = pconn.getTable(new PTableKey(pconn.getTenantId(), getFullTableName(handle.getCatalogName(), handle.getSchemaName(), handle.getTableName())));
 
             List<PColumn> pkColumns = table.getPKColumns();
             if (!pkColumns.isEmpty()) {
@@ -304,7 +625,7 @@ public class PhoenixClient
             }
         }
         catch (IOException | SQLException e) {
-            throw new PrestoException(JDBC_ERROR, e);
+            throw new PrestoException(PHOENIX_ERROR, e);
         }
         return properties.build();
     }

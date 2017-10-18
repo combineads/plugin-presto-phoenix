@@ -13,14 +13,6 @@
  */
 package com.facebook.presto.plugin.phoenix;
 
-import com.facebook.presto.plugin.jdbc.BaseJdbcConfig;
-import com.facebook.presto.plugin.jdbc.JdbcClient;
-import com.facebook.presto.plugin.jdbc.JdbcConnectorId;
-import com.facebook.presto.plugin.jdbc.JdbcMetadataConfig;
-import com.facebook.presto.plugin.jdbc.JdbcMetadataFactory;
-import com.facebook.presto.plugin.jdbc.JdbcRecordSetProvider;
-import com.facebook.presto.plugin.jdbc.JdbcRecordSinkProvider;
-import com.facebook.presto.plugin.jdbc.JdbcSplitManager;
 import com.facebook.presto.spi.type.TypeManager;
 import com.google.inject.Binder;
 import com.google.inject.Scopes;
@@ -31,7 +23,6 @@ import java.sql.SQLException;
 
 import static com.google.common.base.Preconditions.checkArgument;
 import static io.airlift.configuration.ConfigBinder.configBinder;
-
 import static java.util.Objects.requireNonNull;
 
 public class PhoenixClientModule
@@ -49,20 +40,20 @@ public class PhoenixClientModule
     @Override
     protected void setup(Binder binder)
     {
-        binder.bind(JdbcConnectorId.class).toInstance(new JdbcConnectorId(connectorId));
-        binder.bind(JdbcSplitManager.class).in(Scopes.SINGLETON);
-        binder.bind(JdbcRecordSetProvider.class).in(Scopes.SINGLETON);
-        binder.bind(JdbcRecordSinkProvider.class).in(Scopes.SINGLETON);
-        configBinder(binder).bindConfig(JdbcMetadataConfig.class);
+        binder.bind(PhoenixConnectorId.class).toInstance(new PhoenixConnectorId(connectorId));
+        binder.bind(PhoenixSplitManager.class).in(Scopes.SINGLETON);
+        binder.bind(PhoenixRecordSetProvider.class).in(Scopes.SINGLETON);
+        binder.bind(PhoenixRecordSinkProvider.class).in(Scopes.SINGLETON);
+        configBinder(binder).bindConfig(PhoenixMetadataConfig.class);
 
-        binder.bind(JdbcClient.class).to(PhoenixClient.class).in(Scopes.SINGLETON);
-        binder.bind(JdbcMetadataFactory.class).to(PhoenixMetadataFactory.class).in(Scopes.SINGLETON);
+        binder.bind(PhoenixClient.class).in(Scopes.SINGLETON);
+        binder.bind(PhoenixMetadataFactory.class).in(Scopes.SINGLETON);
 
         binder.bind(PhoenixTableProperties.class).in(Scopes.SINGLETON);
-        binder.bind(TypeManager.class).toInstance(typeManager);
         binder.bind(PhoenixConnector.class).in(Scopes.SINGLETON);
+        binder.bind(TypeManager.class).toInstance(typeManager);
 
-        ensureCatalogIsEmpty(buildConfigObject(BaseJdbcConfig.class).getConnectionUrl());
+        ensureCatalogIsEmpty(buildConfigObject(PhoenixConfig.class).getConnectionUrl());
     }
 
     private static void ensureCatalogIsEmpty(String connectionUrl)

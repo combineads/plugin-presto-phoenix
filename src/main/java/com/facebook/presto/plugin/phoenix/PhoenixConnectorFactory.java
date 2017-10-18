@@ -13,7 +13,6 @@
  */
 package com.facebook.presto.plugin.phoenix;
 
-import com.facebook.presto.plugin.jdbc.JdbcHandleResolver;
 import com.facebook.presto.spi.ConnectorHandleResolver;
 import com.facebook.presto.spi.classloader.ThreadContextClassLoader;
 import com.facebook.presto.spi.connector.Connector;
@@ -45,7 +44,7 @@ public class PhoenixConnectorFactory
     @Override
     public ConnectorHandleResolver getHandleResolver()
     {
-        return new JdbcHandleResolver();
+        return new PhoenixHandleResolver();
     }
 
     @Override

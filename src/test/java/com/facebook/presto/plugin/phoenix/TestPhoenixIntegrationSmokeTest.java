@@ -33,7 +33,7 @@ public class TestPhoenixIntegrationSmokeTest
     @Test
     public void testCreateTableWithProperties()
     {
-        assertUpdate("CREATE TABLE test_create_table_as_if_not_exists (a bigint, b double, c varchar(10), d varchar(10)) with(rowkeys = ARRAY['b', 'a', 'c'], SALT_BUCKETS=10)");
+        assertUpdate("CREATE TABLE test_create_table_as_if_not_exists (a bigint, b double, c varchar(10), d varchar(10)) with(rowkeys = ARRAY['a', 'b', 'c'], SALT_BUCKETS=10)");
         assertTrue(getQueryRunner().tableExists(getSession(), "test_create_table_as_if_not_exists"));
         assertTableColumnNames("test_create_table_as_if_not_exists", "a", "b", "c", "d");
     }
