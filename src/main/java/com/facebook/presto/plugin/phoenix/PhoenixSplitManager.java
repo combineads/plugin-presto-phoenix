@@ -13,8 +13,6 @@
  */
 package com.facebook.presto.plugin.phoenix;
 
-import com.facebook.presto.plugin.phoenix.PhoenixClient;
-import com.facebook.presto.plugin.phoenix.PhoenixTableLayoutHandle;
 import com.facebook.presto.spi.ConnectorSession;
 import com.facebook.presto.spi.ConnectorSplitSource;
 import com.facebook.presto.spi.ConnectorTableLayoutHandle;

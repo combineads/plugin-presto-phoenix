@@ -13,11 +13,6 @@
  */
 package com.facebook.presto.plugin.phoenix;
 
-import com.facebook.presto.plugin.phoenix.PhoenixConnector;
-import com.facebook.presto.plugin.phoenix.PhoenixMetadata;
-import com.facebook.presto.plugin.phoenix.PhoenixMetadataFactory;
-import com.facebook.presto.plugin.phoenix.PhoenixRecordSinkProvider;
-import com.facebook.presto.plugin.phoenix.PhoenixTransactionHandle;
 import com.facebook.presto.spi.connector.Connector;
 import com.facebook.presto.spi.connector.ConnectorMetadata;
 import com.facebook.presto.spi.connector.ConnectorRecordSetProvider;

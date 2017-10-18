@@ -22,8 +22,7 @@ import static com.facebook.presto.spi.ErrorType.EXTERNAL;
 public enum PhoenixErrorCode
         implements ErrorCodeSupplier
 {
-    PHOENIX_ERROR(0, EXTERNAL),
-    PHOENIX_NON_TRANSIENT_ERROR(1, EXTERNAL);
+    PHOENIX_ERROR(0, EXTERNAL), PHOENIX_NON_TRANSIENT_ERROR(1, EXTERNAL);
 
     private final ErrorCode errorCode;
 

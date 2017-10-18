@@ -23,7 +23,6 @@ import static org.testng.Assert.assertTrue;
 public class TestPhoenixIntegrationSmokeTest
         extends AbstractTestIntegrationSmokeTest
 {
-
     public TestPhoenixIntegrationSmokeTest()
             throws Exception
     {

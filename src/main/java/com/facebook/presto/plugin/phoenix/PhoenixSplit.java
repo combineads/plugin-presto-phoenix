@@ -134,7 +134,8 @@ public class PhoenixSplit
         return scans;
     }
 
-    public PhoenixInputSplit getPhoenixInputSplit() {
+    public PhoenixInputSplit getPhoenixInputSplit()
+    {
         return phoenixSplit;
     }
 

@@ -290,7 +290,6 @@ public class QueryBuilder
         accumulator.add(new TypeAndValue(type, value));
     }
 
-
     private static String generateActualSql(String sqlQuery, Object... parameters)
     {
         String[] parts = sqlQuery.split("\\?");

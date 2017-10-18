@@ -271,7 +271,7 @@ public class PhoenixClient
             String catalogName,
             String schemaName,
             String tableName,
-            TupleDomain<ColumnHandle> TupleDomain,
+            TupleDomain<ColumnHandle> tupleDomain,
             List<PhoenixColumnHandle> columnHandles)
             throws SQLException, IOException, InterruptedException
     {
@@ -281,13 +281,12 @@ public class PhoenixClient
                 schemaName,
                 tableName,
                 columnHandles,
-                TupleDomain);
+                tupleDomain);
     }
 
     public static List<InputSplit> buildInputSplit(PhoenixConnection connection, String inputQuery)
             throws SQLException, IOException, InterruptedException
     {
-
         Configuration conf = HBaseConfiguration.create(connection.getQueryServices().getConfiguration());
         PhoenixConfigurationUtil.setInputQuery(conf, inputQuery);
         conf.setBoolean(MAPREDUCE_SPLIT_BY_STATS, false);
@@ -437,7 +436,7 @@ public class PhoenixClient
                 connection.getCatalog(),
                 escapeNamePattern(schemaName, escape),
                 escapeNamePattern(tableName, escape),
-                new String[] { "TABLE", "VIEW" });
+                new String[] {"TABLE", "VIEW"});
     }
 
     protected SchemaTableName getSchemaTableName(ResultSet resultSet)

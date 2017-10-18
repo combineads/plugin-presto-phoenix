@@ -13,8 +13,6 @@
  */
 package com.facebook.presto.plugin.phoenix;
 
-import com.facebook.presto.plugin.phoenix.PhoenixMetadataConfig;
-
 import javax.inject.Inject;
 
 import static java.util.Objects.requireNonNull;
