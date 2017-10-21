@@ -8,22 +8,9 @@
 		<version>0.185</version>
 	</parent>
 
-	<repositories>
-		<repository>
-			<id>cloudera</id>
-			<url>https://repository.cloudera.com/artifactory/cloudera-repos/</url>
-		</repository>
-	</repositories>
-
 	<artifactId>presto-phoenix</artifactId>
 	<description>Presto - Phoenix Connector</description>
 	<packaging>presto-plugin</packaging>
-
-	<properties>
-		<phoenix.version>4.12.0-HBase-1.2.0-cdh5.12.1</phoenix.version>
-		<hbase.version>1.2.0-cdh5.12.1</hbase.version>
-		<hadoop.version>2.6.0-cdh5.12.1</hadoop.version>
-	</properties>
 
 	<dependencies>
 		<dependency>
@@ -53,15 +40,9 @@
 
 		<!-- IMPORTANT CLASSPATH ORDER -->
 		<dependency>
-			<groupId>org.apache.phoenix</groupId>
-			<artifactId>phoenix-core</artifactId>
-			<version>${phoenix.version}</version>
-			<exclusions>
-				<exclusion>
-					<groupId>*</groupId>
-					<artifactId>*</artifactId>
-				</exclusion>
-			</exclusions>
+			<groupId>com.facebook.presto</groupId>
+			<artifactId>phoenix-core-shaded</artifactId>
+			<version>1.2</version>
 		</dependency>
 
 		<!-- Presto SPI -->
@@ -138,60 +119,11 @@
 			<scope>test</scope>
 		</dependency>
 
-		<!-- HBasse Test dependencies -->
 		<dependency>
-			<groupId>org.apache.hbase</groupId>
-			<artifactId>hbase-shaded-server</artifactId>
-			<version>${hbase.version}</version>
+			<groupId>com.facebook.presto</groupId>
+			<artifactId>hbase-testing-util-shaded</artifactId>
+			<version>1.2</version>
 			<scope>test</scope>
-			<exclusions>
-				<exclusion>
-					<groupId>*</groupId>
-					<artifactId>*</artifactId>
-				</exclusion>
-			</exclusions>
-		</dependency>
-
-		<dependency>
-			<groupId>org.apache.hbase</groupId>
-			<artifactId>hbase-server</artifactId>
-			<version>${hbase.version}</version>
-			<classifier>tests</classifier>
-			<scope>test</scope>
-			<exclusions>
-				<exclusion>
-					<groupId>org.slf4j</groupId>
-					<artifactId>slf4j-log4j12</artifactId>
-				</exclusion>
-				<exclusion>
-					<groupId>com.sun.jersey</groupId>
-					<artifactId>jersey-core</artifactId>
-				</exclusion>
-				<exclusion>
-					<groupId>com.sun.jersey</groupId>
-					<artifactId>jersey-server</artifactId>
-				</exclusion>
-				<exclusion>
-					<groupId>com.sun.jersey</groupId>
-					<artifactId>jersey-json</artifactId>
-				</exclusion>
-			</exclusions>
-		</dependency>
-
-		<dependency>
-			<groupId>org.apache.hbase</groupId>
-			<artifactId>hbase-hadoop-compat</artifactId>
-			<version>${hbase.version}</version>
-			<scope>test</scope>
-			<type>test-jar</type>
-		</dependency>
-
-		<dependency>
-			<groupId>org.apache.hbase</groupId>
-			<artifactId>hbase-hadoop2-compat</artifactId>
-			<version>${hbase.version}</version>
-			<scope>test</scope>
-			<type>test-jar</type>
 		</dependency>
 	</dependencies>
 </project>
