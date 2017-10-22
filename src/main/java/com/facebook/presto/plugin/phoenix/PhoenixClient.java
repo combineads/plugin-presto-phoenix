@@ -23,6 +23,7 @@ import com.facebook.presto.spi.SchemaTableName;
 import com.facebook.presto.spi.TableNotFoundException;
 import com.facebook.presto.spi.predicate.TupleDomain;
 import com.facebook.presto.spi.type.CharType;
+import com.facebook.presto.spi.type.DecimalType;
 import com.facebook.presto.spi.type.Type;
 import com.facebook.presto.spi.type.VarcharType;
 import com.google.common.base.Joiner;
@@ -212,7 +213,7 @@ public class PhoenixClient
                 boolean found = false;
                 while (resultSet.next()) {
                     found = true;
-                    Type columnType = toPrestoType(resultSet.getInt("DATA_TYPE"), resultSet.getInt("COLUMN_SIZE"));
+                    Type columnType = toPrestoType(resultSet.getInt("DATA_TYPE"), resultSet.getInt("COLUMN_SIZE"), resultSet.getInt("DECIMAL_DIGITS"));
                     // skip unsupported column types
                     if (columnType != null) {
                         String columnName = resultSet.getString("COLUMN_NAME");
@@ -456,7 +457,7 @@ public class PhoenixClient
         }
     }
 
-    protected Type toPrestoType(int phoenixType, int columnSize)
+    protected Type toPrestoType(int phoenixType, int columnSize, int decimalDigits)
     {
         switch (phoenixType) {
             case Types.BIT:
@@ -475,8 +476,9 @@ public class PhoenixClient
             case Types.FLOAT:
             case Types.DOUBLE:
             case Types.NUMERIC:
-            case Types.DECIMAL:
                 return DOUBLE;
+            case Types.DECIMAL:
+                return DecimalType.createDecimalType(columnSize, decimalDigits);
             case Types.CHAR:
             case Types.NCHAR:
                 return createCharType(min(columnSize, CharType.MAX_LENGTH));
@@ -521,6 +523,11 @@ public class PhoenixClient
         if (sqlType != null) {
             return sqlType;
         }
+
+        if (type instanceof DecimalType) {
+            return type.toString();
+        }
+
         throw new PrestoException(NOT_SUPPORTED, "Unsupported column type: " + type.getTypeSignature());
     }
 

@@ -15,12 +15,16 @@ package com.facebook.presto.plugin.phoenix;
 
 import com.facebook.presto.spi.PrestoException;
 import com.facebook.presto.spi.RecordSink;
+import com.facebook.presto.spi.type.DecimalType;
+import com.facebook.presto.spi.type.Decimals;
 import com.facebook.presto.spi.type.Type;
 import com.google.common.collect.ImmutableList;
 import io.airlift.slice.Slice;
 import org.joda.time.DateTimeZone;
 import org.joda.time.chrono.ISOChronology;
 
+import java.math.BigDecimal;
+import java.math.BigInteger;
 import java.sql.Connection;
 import java.sql.Date;
 import java.sql.PreparedStatement;
@@ -33,7 +37,11 @@ import java.util.concurrent.TimeUnit;
 import static com.facebook.presto.plugin.phoenix.PhoenixErrorCode.PHOENIX_ERROR;
 import static com.facebook.presto.plugin.phoenix.PhoenixErrorCode.PHOENIX_NON_TRANSIENT_ERROR;
 import static com.facebook.presto.spi.type.DateType.DATE;
+import static com.facebook.presto.spi.type.Decimals.isLongDecimal;
+import static com.facebook.presto.spi.type.Decimals.isShortDecimal;
 import static com.google.common.base.Preconditions.checkState;
+import static io.airlift.slice.Slices.wrappedBuffer;
+
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 public class PhoenixRecordSink
@@ -124,11 +132,17 @@ public class PhoenixRecordSink
     public void appendLong(long value)
     {
         try {
-            if (DATE.equals(columnTypes.get(field))) {
+            Type type = columnTypes.get(field);
+            if (DATE.equals(type)) {
                 // convert to midnight in default time zone
                 long utcMillis = TimeUnit.DAYS.toMillis(value);
                 long localMillis = ISOChronology.getInstanceUTC().getZone().getMillisKeepLocal(DateTimeZone.getDefault(), utcMillis);
                 statement.setDate(next(), new Date(localMillis));
+            }
+            else if (isShortDecimal(type)) {
+                int scale = ((DecimalType) type).getScale();
+                BigInteger unscaledValue = BigInteger.valueOf(value);
+                statement.setBigDecimal(next(), new BigDecimal(unscaledValue, scale));
             }
             else {
                 statement.setLong(next(), value);
@@ -154,7 +168,15 @@ public class PhoenixRecordSink
     public void appendString(byte[] value)
     {
         try {
-            statement.setString(next(), new String(value, UTF_8));
+            Type type = columnTypes.get(field);
+            if (isLongDecimal(type)) {
+                int scale = ((DecimalType) type).getScale();
+                BigInteger unscaledValue = Decimals.decodeUnscaledValue(wrappedBuffer(value));
+                statement.setBigDecimal(next(), new BigDecimal(unscaledValue, scale));
+            }
+            else {
+                statement.setString(next(), new String(value, UTF_8));
+            }
         }
         catch (SQLException e) {
             throw new PrestoException(PHOENIX_ERROR, e);

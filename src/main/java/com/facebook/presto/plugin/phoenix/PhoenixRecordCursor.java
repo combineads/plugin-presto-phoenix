@@ -18,6 +18,7 @@ import com.facebook.presto.spi.RecordCursor;
 import com.facebook.presto.spi.type.BigintType;
 import com.facebook.presto.spi.type.CharType;
 import com.facebook.presto.spi.type.DateType;
+import com.facebook.presto.spi.type.DecimalType;
 import com.facebook.presto.spi.type.IntegerType;
 import com.facebook.presto.spi.type.RealType;
 import com.facebook.presto.spi.type.SmallintType;
@@ -47,6 +48,7 @@ import org.apache.phoenix.mapreduce.util.PhoenixConfigurationUtil;
 import org.joda.time.chrono.ISOChronology;
 
 import java.lang.reflect.Field;
+import java.math.BigDecimal;
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -58,6 +60,8 @@ import java.util.stream.Collectors;
 
 import static com.facebook.presto.plugin.phoenix.PhoenixClient.buildInputSplit;
 import static com.facebook.presto.spi.StandardErrorCode.GENERIC_INTERNAL_ERROR;
+import static com.facebook.presto.spi.type.Decimals.encodeScaledValue;
+import static com.facebook.presto.spi.type.Decimals.isShortDecimal;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkState;
 import static io.airlift.slice.Slices.utf8Slice;
@@ -187,6 +191,10 @@ public class PhoenixRecordCursor
             if (type.equals(RealType.REAL)) {
                 return (long) floatToRawIntBits(resultSet.getFloat(field + 1));
             }
+            if (isShortDecimal(type)) {
+                BigDecimal decimal = resultSet.getBigDecimal(field + 1);
+                return decimal.unscaledValue().longValue();
+            }
             if (type.equals(BigintType.BIGINT)) {
                 return resultSet.getLong(field + 1);
             }
@@ -239,6 +247,9 @@ public class PhoenixRecordCursor
             }
             if (type.equals(VarbinaryType.VARBINARY)) {
                 return wrappedBuffer(resultSet.getBytes(field + 1));
+            }
+            if (type instanceof DecimalType) {
+                return encodeScaledValue(resultSet.getBigDecimal(field + 1));
             }
             throw new PrestoException(GENERIC_INTERNAL_ERROR, "Unhandled type for slice: " + type.getTypeSignature());
         }

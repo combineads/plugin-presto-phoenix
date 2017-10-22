@@ -20,6 +20,8 @@ import com.facebook.presto.spi.predicate.TupleDomain;
 import com.facebook.presto.spi.type.BigintType;
 import com.facebook.presto.spi.type.BooleanType;
 import com.facebook.presto.spi.type.DateType;
+import com.facebook.presto.spi.type.DecimalType;
+import com.facebook.presto.spi.type.Decimals;
 import com.facebook.presto.spi.type.DoubleType;
 import com.facebook.presto.spi.type.IntegerType;
 import com.facebook.presto.spi.type.RealType;
@@ -37,6 +39,8 @@ import io.airlift.slice.Slice;
 import org.apache.phoenix.jdbc.PhoenixPreparedStatement;
 import org.joda.time.DateTimeZone;
 
+import java.math.BigDecimal;
+import java.math.BigInteger;
 import java.sql.Connection;
 import java.sql.Date;
 import java.sql.SQLException;
@@ -47,10 +51,14 @@ import java.util.ArrayList;
 import java.util.List;
 
 import static com.facebook.presto.spi.type.DateTimeEncoding.unpackMillisUtc;
+import static com.facebook.presto.spi.type.Decimals.isLongDecimal;
+import static com.facebook.presto.spi.type.Decimals.isShortDecimal;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkState;
 import static com.google.common.base.Strings.isNullOrEmpty;
 import static com.google.common.collect.Iterables.getOnlyElement;
+import static io.airlift.slice.Slices.wrappedBuffer;
+
 import static java.lang.Float.intBitsToFloat;
 import static java.util.Collections.nCopies;
 import static java.util.Objects.requireNonNull;
@@ -161,6 +169,19 @@ public class QueryBuilder
                 else if (typeAndValue.getType() instanceof VarcharType) {
                     statement.setString(i + 1, ((Slice) typeAndValue.getValue()).toStringUtf8());
                 }
+                else if (typeAndValue.getType() instanceof VarcharType) {
+                    statement.setString(i + 1, ((Slice) typeAndValue.getValue()).toStringUtf8());
+                }
+                else if (isShortDecimal(typeAndValue.getType())) {
+                    int scale = ((DecimalType) typeAndValue.getType()).getScale();
+                    BigInteger unscaledValue = BigInteger.valueOf((long) typeAndValue.getValue());
+                    statement.setBigDecimal(i + 1, new BigDecimal(unscaledValue, scale));
+                }
+                else if (isLongDecimal(typeAndValue.getType())) {
+                    int scale = ((DecimalType) typeAndValue.getType()).getScale();
+                    BigInteger unscaledValue = Decimals.decodeUnscaledValue((Slice) typeAndValue.getValue());
+                    statement.setBigDecimal(i + 1, new BigDecimal(unscaledValue, scale));
+                }
                 else {
                     throw new UnsupportedOperationException("Can't handle type: " + typeAndValue.getType());
                 }
@@ -184,7 +205,8 @@ public class QueryBuilder
                 validType.equals(TimeWithTimeZoneType.TIME_WITH_TIME_ZONE) ||
                 validType.equals(TimestampType.TIMESTAMP) ||
                 validType.equals(TimestampWithTimeZoneType.TIMESTAMP_WITH_TIME_ZONE) ||
-                validType instanceof VarcharType;
+                validType instanceof VarcharType ||
+                validType instanceof DecimalType;
     }
 
     private List<String> toConjuncts(List<PhoenixColumnHandle> columns, TupleDomain<ColumnHandle> tupleDomain, List<TypeAndValue> accumulator)

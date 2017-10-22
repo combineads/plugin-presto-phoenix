@@ -43,6 +43,16 @@
 			<groupId>com.facebook.presto</groupId>
 			<artifactId>phoenix-core-shaded</artifactId>
 			<version>1.2</version>
+			<exclusions>
+				<exclusion>
+					<groupId>com.sun.jersey</groupId>
+					<artifactId>jersey-core</artifactId>
+				</exclusion>
+				<exclusion>
+					<groupId>com.sun.jersey</groupId>
+					<artifactId>jersey-server</artifactId>
+				</exclusion>
+			</exclusions>
 		</dependency>
 
 		<!-- Presto SPI -->
@@ -124,6 +134,12 @@
 			<artifactId>hbase-testing-util-shaded</artifactId>
 			<version>1.2</version>
 			<scope>test</scope>
+			<exclusions>
+				<exclusion>
+					<groupId>com.sun.jersey</groupId>
+					<artifactId>jersey-server</artifactId>
+				</exclusion>
+			</exclusions>
 		</dependency>
 	</dependencies>
 </project>
