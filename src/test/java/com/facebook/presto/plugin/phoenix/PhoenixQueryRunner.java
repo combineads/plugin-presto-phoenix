@@ -66,7 +66,7 @@ public final class PhoenixQueryRunner
 
         if (!tpchLoaded) {
             createSchema(server, TPCH_SCHEMA);
-            //copyTpchTables(queryRunner, "tpch", TINY_SCHEMA_NAME, createSession(), TpchTable.getTables());
+            copyTpchTables(queryRunner, "tpch", TINY_SCHEMA_NAME, createSession(), TpchTable.getTables());
             tpchLoaded = true;
         }
 
