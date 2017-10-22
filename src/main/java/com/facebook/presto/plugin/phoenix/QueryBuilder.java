@@ -57,14 +57,13 @@ import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkState;
 import static com.google.common.base.Strings.isNullOrEmpty;
 import static com.google.common.collect.Iterables.getOnlyElement;
-import static io.airlift.slice.Slices.wrappedBuffer;
+import static org.joda.time.DateTimeZone.UTC;
 
 import static java.lang.Float.intBitsToFloat;
 import static java.util.Collections.nCopies;
 import static java.util.Objects.requireNonNull;
 import static java.util.concurrent.TimeUnit.DAYS;
 import static java.util.stream.Collectors.joining;
-import static org.joda.time.DateTimeZone.UTC;
 
 public class QueryBuilder
 {
