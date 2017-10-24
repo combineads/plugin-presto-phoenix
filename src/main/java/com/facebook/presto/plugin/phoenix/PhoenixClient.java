@@ -304,6 +304,7 @@ public class PhoenixClient
         Map<String, Object> tableProperties = tableMetadata.getProperties();
 
         List<String> rowkeys = new ArrayList<>(PhoenixTableProperties.getRowkeys(tableProperties));
+        List<String> pkColumns = rowkeys.stream().map(name -> name.split("\\s")[0]).collect(Collectors.toList());
 
         if (!getSchemaNames().contains(schema)) {
             throw new PrestoException(NOT_FOUND, "Schema not found: " + schema);
@@ -338,7 +339,7 @@ public class PhoenixClient
                     typeStatement = toSqlType(column.getType()) + " not null";
                     rowkeys.add(columnName);
                 }
-                else if (rowkeys.stream().anyMatch(columnName::equalsIgnoreCase)) {
+                else if (pkColumns.stream().anyMatch(columnName::equalsIgnoreCase)) {
                     typeStatement = toSqlType(column.getType()) + " not null";
                 }
                 else {
