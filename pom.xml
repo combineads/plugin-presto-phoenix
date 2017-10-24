@@ -15,6 +15,22 @@
 	<dependencies>
 		<dependency>
 			<groupId>io.airlift</groupId>
+			<artifactId>bootstrap</artifactId>
+			<exclusions>
+				<exclusion>
+					<groupId>org.slf4j</groupId>
+					<artifactId>log4j-over-slf4j</artifactId>
+				</exclusion>
+			</exclusions>
+		</dependency>
+
+		<dependency>
+			<groupId>io.airlift</groupId>
+			<artifactId>log</artifactId>
+		</dependency>
+
+		<dependency>
+			<groupId>io.airlift</groupId>
 			<artifactId>configuration</artifactId>
 		</dependency>
 
@@ -29,6 +45,11 @@
 		</dependency>
 
 		<dependency>
+			<groupId>joda-time</groupId>
+			<artifactId>joda-time</artifactId>
+		</dependency>
+
+		<dependency>
 			<groupId>javax.validation</groupId>
 			<artifactId>validation-api</artifactId>
 		</dependency>
@@ -38,7 +59,16 @@
 			<artifactId>javax.inject</artifactId>
 		</dependency>
 
-		<!-- IMPORTANT CLASSPATH ORDER -->
+		<dependency>
+			<groupId>org.slf4j</groupId>
+			<artifactId>jcl-over-slf4j</artifactId>
+		</dependency>
+
+		<dependency>
+			<groupId>com.google.code.findbugs</groupId>
+			<artifactId>annotations</artifactId>
+		</dependency>
+
 		<dependency>
 			<groupId>com.facebook.presto</groupId>
 			<artifactId>phoenix-core-shaded</artifactId>
@@ -51,6 +81,22 @@
 				<exclusion>
 					<groupId>com.sun.jersey</groupId>
 					<artifactId>jersey-server</artifactId>
+				</exclusion>
+				<exclusion>
+					<groupId>com.google.code.findbugs</groupId>
+					<artifactId>jsr305</artifactId>
+				</exclusion>
+				<exclusion>
+					<groupId>commons-logging</groupId>
+					<artifactId>commons-logging</artifactId>
+				</exclusion>
+				<exclusion>
+					<groupId>com.github.stephenc.findbugs</groupId>
+					<artifactId>findbugs-annotations</artifactId>
+				</exclusion>
+				<exclusion>
+					<groupId>org.slf4j</groupId>
+					<artifactId>slf4j-log4j12</artifactId>
 				</exclusion>
 			</exclusions>
 		</dependency>
@@ -139,7 +185,45 @@
 					<groupId>com.sun.jersey</groupId>
 					<artifactId>jersey-server</artifactId>
 				</exclusion>
+				<exclusion>
+					<groupId>commons-logging</groupId>
+					<artifactId>commons-logging</artifactId>
+				</exclusion>
+				<exclusion>
+					<groupId>com.github.stephenc.findbugs</groupId>
+					<artifactId>findbugs-annotations</artifactId>
+				</exclusion>
+				<exclusion>
+					<groupId>org.slf4j</groupId>
+					<artifactId>slf4j-log4j12</artifactId>
+				</exclusion>
 			</exclusions>
 		</dependency>
 	</dependencies>
+
+	<build>
+		<plugins>
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-surefire-plugin</artifactId>
+				<configuration>
+					<threadCount>1</threadCount>
+				</configuration>
+			</plugin>
+
+			<plugin>
+				<groupId>com.ning.maven.plugins</groupId>
+				<artifactId>maven-duplicate-finder-plugin</artifactId>
+				<configuration>
+					<ignoredDependencies>
+						<dependency>
+							<groupId>com.facebook.presto</groupId>
+							<artifactId>phoenix-core-shaded</artifactId>
+						</dependency>
+					</ignoredDependencies>
+					<checkTestClasspath>false</checkTestClasspath>
+				</configuration>
+			</plugin>
+		</plugins>
+	</build>
 </project>
