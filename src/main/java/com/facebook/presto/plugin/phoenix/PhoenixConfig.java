@@ -43,7 +43,7 @@ public class PhoenixConfig
         return connectionProperties;
     }
 
-    @Config("properties")
+    @Config("connection-properties")
     public PhoenixConfig setConnectionProperties(String properties)
     {
         final String[] entries = properties.split(";");
