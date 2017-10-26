@@ -98,6 +98,10 @@
 					<groupId>org.slf4j</groupId>
 					<artifactId>slf4j-log4j12</artifactId>
 				</exclusion>
+				<exclusion>
+					<groupId>org.apache.htrace</groupId>
+					<artifactId>htrace-core4</artifactId>
+				</exclusion>
 			</exclusions>
 		</dependency>
 
