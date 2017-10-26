@@ -48,7 +48,6 @@ import org.apache.phoenix.query.QueryConstants;
 import org.apache.phoenix.schema.PColumn;
 import org.apache.phoenix.schema.PName;
 import org.apache.phoenix.schema.PTable;
-import org.apache.phoenix.schema.PTableKey;
 import org.apache.phoenix.schema.TableProperty;
 
 import javax.annotation.Nullable;
@@ -97,6 +96,7 @@ import static java.util.Locale.ENGLISH;
 import static java.util.Objects.requireNonNull;
 import static org.apache.hadoop.hbase.HConstants.FOREVER;
 import static org.apache.phoenix.mapreduce.util.PhoenixConfigurationUtil.MAPREDUCE_SPLIT_BY_STATS;
+import static org.apache.phoenix.util.PhoenixRuntime.getTable;
 
 public class PhoenixClient
 {
@@ -121,6 +121,7 @@ public class PhoenixClient
     protected final String connectorId;
     protected final Driver driver = new PhoenixDriver();
     protected final String connectionUrl;
+    protected final Properties connectionProperties;
 
     @Inject
     public PhoenixClient(PhoenixConnectorId connectorId, PhoenixConfig config) throws SQLException
@@ -129,6 +130,8 @@ public class PhoenixClient
 
         requireNonNull(config, "config is null");
         connectionUrl = config.getConnectionUrl();
+        connectionProperties = new Properties();
+        connectionProperties.putAll(config.getConnectionProperties());
     }
 
     public Set<String> getSchemaNames()
@@ -139,7 +142,7 @@ public class PhoenixClient
             while (resultSet.next()) {
                 String schemaName = resultSet.getString("TABLE_SCHEM").toLowerCase(ENGLISH);
                 // skip internal schemas
-                if (!schemaName.equals("information_schema")) {
+                if (!schemaName.equals("system")) {
                     schemaNames.add(schemaName);
                 }
             }
@@ -265,7 +268,7 @@ public class PhoenixClient
     public PhoenixConnection getConnection()
             throws SQLException
     {
-        return driver.connect(connectionUrl, new Properties()).unwrap(PhoenixConnection.class);
+        return driver.connect(connectionUrl, connectionProperties).unwrap(PhoenixConnection.class);
     }
 
     public String buildSql(PhoenixConnection connection,
@@ -289,8 +292,8 @@ public class PhoenixClient
             throws SQLException, IOException, InterruptedException
     {
         Configuration conf = HBaseConfiguration.create(connection.getQueryServices().getConfiguration());
-        PhoenixConfigurationUtil.setInputQuery(conf, inputQuery);
         conf.setBoolean(MAPREDUCE_SPLIT_BY_STATS, false);
+        PhoenixConfigurationUtil.setInputQuery(conf, inputQuery);
         return new PhoenixInputFormat<>().getSplits(Job.getInstance(conf));
     }
 
@@ -575,7 +578,7 @@ public class PhoenixClient
 
         try (PhoenixConnection pconn = getConnection();
                 HBaseAdmin admin = pconn.getQueryServices().getAdmin()) {
-            PTable table = pconn.getTable(new PTableKey(pconn.getTenantId(), getFullTableName(handle.getCatalogName(), handle.getSchemaName(), handle.getTableName())));
+            PTable table = getTable(pconn, getFullTableName(handle.getCatalogName(), handle.getSchemaName(), handle.getTableName()));
 
             List<PColumn> pkColumns = table.getPKColumns();
             if (!pkColumns.isEmpty()) {

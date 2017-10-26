@@ -17,8 +17,11 @@ import io.airlift.configuration.Config;
 
 import javax.validation.constraints.NotNull;
 
+import java.util.Properties;
+
 public class PhoenixConfig
 {
+    private Properties connectionProperties = new Properties();
     private String connectionUrl;
 
     @NotNull
@@ -31,6 +34,33 @@ public class PhoenixConfig
     public PhoenixConfig setConnectionUrl(String connectionUrl)
     {
         this.connectionUrl = connectionUrl;
+        return this;
+    }
+
+    @NotNull
+    public Properties getConnectionProperties()
+    {
+        return connectionProperties;
+    }
+
+    @Config("properties")
+    public PhoenixConfig setConnectionProperties(String properties)
+    {
+        final String[] entries = properties.split(";");
+        for (int i = 0; i < entries.length; ++i) {
+            final String entry = entries[i];
+            if (entry.length() > 0) {
+                final int index = entry.indexOf('=');
+                if (index > 0) {
+                    final String name = entry.substring(0, index);
+                    final String value = entry.substring(index + 1);
+                    connectionProperties.setProperty(name, value);
+                }
+                if (index <= 0) {
+                    connectionProperties.setProperty(entry, "");
+                }
+            }
+        }
         return this;
     }
 }
