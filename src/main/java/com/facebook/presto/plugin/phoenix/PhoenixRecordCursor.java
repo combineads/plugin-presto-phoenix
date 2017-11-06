@@ -45,6 +45,7 @@ import org.apache.phoenix.jdbc.PhoenixResultSet;
 import org.apache.phoenix.mapreduce.PhoenixInputFormat;
 import org.apache.phoenix.mapreduce.PhoenixInputSplit;
 import org.apache.phoenix.mapreduce.util.PhoenixConfigurationUtil;
+import org.apache.phoenix.schema.tuple.ResultTuple;
 import org.joda.time.chrono.ISOChronology;
 
 import java.lang.reflect.Field;
@@ -68,6 +69,7 @@ import static io.airlift.slice.Slices.utf8Slice;
 import static io.airlift.slice.Slices.wrappedBuffer;
 import static java.lang.Float.floatToRawIntBits;
 import static java.util.Objects.requireNonNull;
+import static org.apache.hadoop.hbase.client.Result.getTotalSizeOfCells;
 import static org.joda.time.DateTimeZone.UTC;
 
 public class PhoenixRecordCursor
@@ -80,8 +82,12 @@ public class PhoenixRecordCursor
     private final List<PhoenixColumnHandle> columnHandles;
 
     private final PhoenixConnection connection;
-    private final ResultSet resultSet;
+    private final PhoenixResultSet resultSet;
     private boolean closed;
+
+    private long bytesRead;
+    private long nanoStart;
+    private long nanoEnd;
 
     public PhoenixRecordCursor(PhoenixClient phoenixClient, PhoenixSplit split, List<PhoenixColumnHandle> columnHandles)
     {
@@ -121,19 +127,13 @@ public class PhoenixRecordCursor
     @Override
     public long getReadTimeNanos()
     {
-        return 0;
-    }
-
-    @Override
-    public long getTotalBytes()
-    {
-        return 0;
+        return nanoStart > 0L ? (nanoEnd == 0 ? System.nanoTime() : nanoEnd) - nanoStart : 0L;
     }
 
     @Override
     public long getCompletedBytes()
     {
-        return 0;
+        return bytesRead;
     }
 
     @Override
@@ -149,14 +149,22 @@ public class PhoenixRecordCursor
             return false;
         }
 
+        if (nanoStart == 0) {
+            nanoStart = System.nanoTime();
+        }
+
         try {
             boolean result = resultSet.next();
             if (!result) {
                 close();
             }
+            else {
+                bytesRead += getTotalSizeOfCells(((ResultTuple) resultSet.getCurrentRow()).getResult());
+            }
             return result;
         }
         catch (SQLException | RuntimeException e) {
+            e.printStackTrace();
             throw handleSqlException(e);
         }
     }
@@ -299,6 +307,7 @@ public class PhoenixRecordCursor
         catch (SQLException e) {
             throw new RuntimeException(e);
         }
+        nanoEnd = System.nanoTime();
     }
 
     private RuntimeException handleSqlException(Exception e)

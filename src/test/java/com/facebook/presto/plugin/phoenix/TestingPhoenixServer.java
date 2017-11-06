@@ -42,6 +42,8 @@ public final class TestingPhoenixServer
         this.conf.setInt(HConstants.MASTER_INFO_PORT, -1);
         this.conf.setInt(HConstants.REGIONSERVER_INFO_PORT, -1);
         this.conf.setInt(HConstants.HBASE_CLIENT_RETRIES_NUMBER, 1);
+        this.conf.set("hbase.regionserver.wal.codec", "org.apache.hadoop.hbase.regionserver.wal.IndexedWALEditCodec");
+        this.conf.setBoolean("phoenix.schema.isNamespaceMappingEnabled", true);
         this.htu = new HBaseTestingUtility(conf);
 
         try {

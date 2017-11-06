@@ -150,8 +150,12 @@ public class PhoenixMetadata
     }
 
     @Override
-    public void createTable(ConnectorSession session, ConnectorTableMetadata tableMetadata)
+    public void createTable(ConnectorSession session, ConnectorTableMetadata tableMetadata, boolean ignoreExisting)
     {
+        PhoenixTableHandle existingTable = phoenixClient.getTableHandle(tableMetadata.getTable());
+        if (existingTable != null && !ignoreExisting) {
+            throw new IllegalArgumentException("Target table already exists: " + tableMetadata.getTable());
+        }
         phoenixClient.createTable(tableMetadata);
     }
 
