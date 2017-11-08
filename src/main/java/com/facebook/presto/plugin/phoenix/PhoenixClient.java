@@ -611,7 +611,7 @@ public class PhoenixClient
             for (HColumnDescriptor columnFamily : columnFamilies) {
                 if (columnFamily.getNameAsString().equals(defaultFamilyName)) {
                     if (!columnFamily.getBloomFilterType().toString().equals("NONE")) {
-                        properties.put(PhoenixTableProperties.BLOOMFILTER, columnFamily.getBloomFilterType());
+                        properties.put(PhoenixTableProperties.BLOOMFILTER, columnFamily.getBloomFilterType().toString());
                     }
                     if (columnFamily.getMaxVersions() != 1) {
                         properties.put(PhoenixTableProperties.VERSIONS, columnFamily.getMaxVersions());
@@ -620,7 +620,7 @@ public class PhoenixClient
                         properties.put(PhoenixTableProperties.MIN_VERSIONS, columnFamily.getMinVersions());
                     }
                     if (!columnFamily.getCompression().toString().equals("NONE")) {
-                        properties.put(PhoenixTableProperties.COMPRESSION, columnFamily.getCompression());
+                        properties.put(PhoenixTableProperties.COMPRESSION, columnFamily.getCompression().toString());
                     }
                     if (columnFamily.getTimeToLive() < FOREVER) {
                         properties.put(PhoenixTableProperties.TTL, columnFamily.getTimeToLive());
