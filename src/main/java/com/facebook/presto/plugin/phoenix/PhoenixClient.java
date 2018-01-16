@@ -492,7 +492,7 @@ public class PhoenixClient
             case Types.NVARCHAR:
             case Types.LONGVARCHAR:
             case Types.LONGNVARCHAR:
-                if (columnSize > VarcharType.MAX_LENGTH) {
+                if (columnSize == 0 || columnSize > VarcharType.MAX_LENGTH) {
                     return createUnboundedVarcharType();
                 }
                 return createVarcharType(columnSize);
