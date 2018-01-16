@@ -45,6 +45,8 @@ import org.apache.phoenix.mapreduce.PhoenixInputFormat;
 import org.apache.phoenix.mapreduce.PhoenixInputSplit;
 import org.apache.phoenix.mapreduce.util.PhoenixConfigurationUtil;
 import org.apache.phoenix.query.QueryConstants;
+import org.apache.phoenix.schema.AmbiguousColumnException;
+import org.apache.phoenix.schema.ColumnNotFoundException;
 import org.apache.phoenix.schema.PColumn;
 import org.apache.phoenix.schema.PName;
 import org.apache.phoenix.schema.PTable;
@@ -586,6 +588,16 @@ public class PhoenixClient
                         .map(PColumn::getName)
                         .map(PName::getString)
                         .filter(name -> !name.startsWith("_"))
+                        .map(name -> {
+                            try {
+                                if (table.getColumnForColumnName(name).isRowTimestamp()) {
+                                    return name + " ROW_TIMESTAMP";
+                                }
+                            }
+                            catch (ColumnNotFoundException | AmbiguousColumnException e) {
+                            }
+                            return name;
+                        })
                         .collect(Collectors.toList()));
             }
 
