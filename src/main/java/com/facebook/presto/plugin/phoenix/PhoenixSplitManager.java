@@ -35,7 +35,7 @@ public class PhoenixSplitManager
     }
 
     @Override
-    public ConnectorSplitSource getSplits(ConnectorTransactionHandle transactionHandle, ConnectorSession session, ConnectorTableLayoutHandle layout)
+    public ConnectorSplitSource getSplits(ConnectorTransactionHandle transactionHandle, ConnectorSession session, ConnectorTableLayoutHandle layout, SplitSchedulingStrategy splitSchedulingStrategy)
     {
         PhoenixTableLayoutHandle layoutHandle = (PhoenixTableLayoutHandle) layout;
         return phoenixClient.getSplits(layoutHandle);

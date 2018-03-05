@@ -5,7 +5,7 @@
 	<parent>
 		<groupId>com.facebook.presto</groupId>
 		<artifactId>presto-root</artifactId>
-		<version>0.188</version>
+		<version>0.194</version>
 	</parent>
 
 	<artifactId>presto-phoenix</artifactId>
@@ -211,16 +211,19 @@
 			</plugin>
 
 			<plugin>
-				<groupId>com.ning.maven.plugins</groupId>
-				<artifactId>maven-duplicate-finder-plugin</artifactId>
+				<groupId>org.basepom.maven</groupId>
+				<artifactId>duplicate-finder-maven-plugin</artifactId>
 				<configuration>
 					<ignoredDependencies>
 						<dependency>
 							<groupId>com.facebook.presto</groupId>
 							<artifactId>phoenix-core-shaded</artifactId>
 						</dependency>
+						<dependency>
+							<groupId>com.facebook.presto</groupId>
+							<artifactId>hbase-testing-util-shaded</artifactId>
+						</dependency>
 					</ignoredDependencies>
-					<checkTestClasspath>false</checkTestClasspath>
 				</configuration>
 			</plugin>
 		</plugins>

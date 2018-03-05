@@ -18,15 +18,13 @@ import com.facebook.presto.testing.MaterializedRow;
 import com.facebook.presto.tests.AbstractTestIntegrationSmokeTest;
 import com.google.common.collect.ImmutableMap;
 import org.intellij.lang.annotations.Language;
-import org.joda.time.DateTime;
 import org.testng.annotations.Test;
 
 import java.math.BigDecimal;
-import java.sql.Date;
-import java.sql.Timestamp;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
-import static org.joda.time.DateTimeZone.UTC;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertTrue;
@@ -71,7 +69,7 @@ public class TestPhoenixIntegrationSmokeTest
 
         assertUpdate(query, 1);
 
-        MaterializedResult results = getQueryRunner().execute(getSession(), "SELECT * FROM test_types_table where CAST('12345678901234567890.0123456789' AS DECIMAL(30,10)) = col_decimal_long").toJdbcTypes();
+        MaterializedResult results = getQueryRunner().execute(getSession(), "SELECT * FROM test_types_table where CAST('12345678901234567890.0123456789' AS DECIMAL(30,10)) = col_decimal_long").toTestTypes();
         assertEquals(results.getRowCount(), 1);
         MaterializedRow row = results.getMaterializedRows().get(0);
         assertEquals(row.getField(0), "foo");
@@ -80,8 +78,8 @@ public class TestPhoenixIntegrationSmokeTest
         assertEquals(row.getField(3), 2);
         assertEquals(row.getField(4), 3.14);
         assertEquals(row.getField(5), true);
-        assertEquals(row.getField(6), new Date(new DateTime(1980, 5, 7, 0, 0, 0, UTC).getMillis()));
-        assertEquals(row.getField(7), new Timestamp(new DateTime(1980, 5, 7, 11, 22, 33, 456, UTC).getMillis()));
+        assertEquals(row.getField(6), LocalDate.of(1980, 5, 7));
+        assertEquals(row.getField(7), LocalDateTime.of(1980, 5, 7, 11, 22, 33, 456_000_000));
         assertEquals(row.getField(8), new BigDecimal("3.14"));
         assertEquals(row.getField(9), new BigDecimal("12345678901234567890.0123456789"));
         assertEquals(row.getField(10), "bar       ");

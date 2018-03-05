@@ -15,35 +15,35 @@ package com.facebook.presto.plugin.phoenix;
 
 import com.facebook.presto.spi.ConnectorInsertTableHandle;
 import com.facebook.presto.spi.ConnectorOutputTableHandle;
+import com.facebook.presto.spi.ConnectorPageSink;
 import com.facebook.presto.spi.ConnectorSession;
-import com.facebook.presto.spi.RecordSink;
-import com.facebook.presto.spi.connector.ConnectorRecordSinkProvider;
+import com.facebook.presto.spi.connector.ConnectorPageSinkProvider;
 import com.facebook.presto.spi.connector.ConnectorTransactionHandle;
 
 import javax.inject.Inject;
 
 import static java.util.Objects.requireNonNull;
 
-public class PhoenixRecordSinkProvider
-        implements ConnectorRecordSinkProvider
+public class PhoenixPageSinkProvider
+        implements ConnectorPageSinkProvider
 {
     private final PhoenixClient phoenixClient;
 
     @Inject
-    public PhoenixRecordSinkProvider(PhoenixClient phoenixClient)
+    public PhoenixPageSinkProvider(PhoenixClient phoenixClient)
     {
         this.phoenixClient = requireNonNull(phoenixClient, "phoenixClient is null");
     }
 
     @Override
-    public RecordSink getRecordSink(ConnectorTransactionHandle transactionHandle, ConnectorSession session, ConnectorOutputTableHandle tableHandle)
+    public ConnectorPageSink createPageSink(ConnectorTransactionHandle transactionHandle, ConnectorSession session, ConnectorOutputTableHandle outputTableHandle)
     {
-        return new PhoenixRecordSink((PhoenixOutputTableHandle) tableHandle, phoenixClient);
+        return new PhoenixPageSink((PhoenixOutputTableHandle) outputTableHandle, phoenixClient);
     }
 
     @Override
-    public RecordSink getRecordSink(ConnectorTransactionHandle transactionHandle, ConnectorSession session, ConnectorInsertTableHandle tableHandle)
+    public ConnectorPageSink createPageSink(ConnectorTransactionHandle transactionHandle, ConnectorSession session, ConnectorInsertTableHandle insertTableHandle)
     {
-        return new PhoenixRecordSink((PhoenixOutputTableHandle) tableHandle, phoenixClient);
+        return new PhoenixPageSink((PhoenixOutputTableHandle) insertTableHandle, phoenixClient);
     }
 }

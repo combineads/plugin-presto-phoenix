@@ -43,7 +43,7 @@ public class PhoenixClientModule
         binder.bind(PhoenixConnectorId.class).toInstance(new PhoenixConnectorId(connectorId));
         binder.bind(PhoenixSplitManager.class).in(Scopes.SINGLETON);
         binder.bind(PhoenixRecordSetProvider.class).in(Scopes.SINGLETON);
-        binder.bind(PhoenixRecordSinkProvider.class).in(Scopes.SINGLETON);
+        binder.bind(PhoenixPageSinkProvider.class).in(Scopes.SINGLETON);
         configBinder(binder).bindConfig(PhoenixMetadataConfig.class);
 
         binder.bind(PhoenixClient.class).in(Scopes.SINGLETON);

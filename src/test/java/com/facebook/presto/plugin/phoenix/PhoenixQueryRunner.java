@@ -32,7 +32,6 @@ import java.util.Map;
 import static com.facebook.presto.testing.TestingSession.testSessionBuilder;
 import static com.facebook.presto.tpch.TpchMetadata.TINY_SCHEMA_NAME;
 import static io.airlift.units.Duration.nanosSince;
-
 import static java.lang.String.format;
 import static java.util.concurrent.TimeUnit.SECONDS;
 
@@ -41,7 +40,7 @@ public final class PhoenixQueryRunner
     private static final Logger LOG = Logger.get(PhoenixQueryRunner.class);
     private static final String TPCH_SCHEMA = "tpch";
 
-    private static boolean tpchLoaded = false;
+    private static boolean tpchLoaded;
     private static TestingPhoenixServer server = new TestingPhoenixServer();
 
     private PhoenixQueryRunner()

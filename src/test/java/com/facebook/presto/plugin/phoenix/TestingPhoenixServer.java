@@ -26,7 +26,6 @@ import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 
 import static com.facebook.presto.spi.StandardErrorCode.SERVER_SHUTTING_DOWN;
-
 import static java.lang.String.format;
 
 public final class TestingPhoenixServer

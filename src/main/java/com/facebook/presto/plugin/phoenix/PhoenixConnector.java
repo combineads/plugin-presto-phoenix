@@ -15,8 +15,8 @@ package com.facebook.presto.plugin.phoenix;
 
 import com.facebook.presto.spi.connector.Connector;
 import com.facebook.presto.spi.connector.ConnectorMetadata;
+import com.facebook.presto.spi.connector.ConnectorPageSinkProvider;
 import com.facebook.presto.spi.connector.ConnectorRecordSetProvider;
-import com.facebook.presto.spi.connector.ConnectorRecordSinkProvider;
 import com.facebook.presto.spi.connector.ConnectorSplitManager;
 import com.facebook.presto.spi.connector.ConnectorTransactionHandle;
 import com.facebook.presto.spi.session.PropertyMetadata;
@@ -44,7 +44,7 @@ public class PhoenixConnector
     private final PhoenixMetadataFactory phoenixMetadataFactory;
     private final PhoenixSplitManager phoenixSplitManager;
     private final PhoenixRecordSetProvider phoenixRecordSetProvider;
-    private final PhoenixRecordSinkProvider phoenixRecordSinkProvider;
+    private final PhoenixPageSinkProvider phoenixPageSinkProvider;
     private final PhoenixTableProperties phoenixTableProperties;
 
     private final ConcurrentMap<ConnectorTransactionHandle, PhoenixMetadata> transactions = new ConcurrentHashMap<>();
@@ -55,14 +55,14 @@ public class PhoenixConnector
             PhoenixMetadataFactory phoenixMetadataFactory,
             PhoenixSplitManager phoenixSplitManager,
             PhoenixRecordSetProvider phoenixRecordSetProvider,
-            PhoenixRecordSinkProvider phoenixRecordSinkProvider,
+            PhoenixPageSinkProvider phoenixPageSinkProvider,
             PhoenixTableProperties phoenixTableProperties)
     {
         this.lifeCycleManager = requireNonNull(lifeCycleManager, "lifeCycleManager is null");
         this.phoenixMetadataFactory = requireNonNull(phoenixMetadataFactory, "phoenixMetadataFactory is null");
         this.phoenixSplitManager = requireNonNull(phoenixSplitManager, "phoenixSplitManager is null");
         this.phoenixRecordSetProvider = requireNonNull(phoenixRecordSetProvider, "phoenixRecordSetProvider is null");
-        this.phoenixRecordSinkProvider = requireNonNull(phoenixRecordSinkProvider, "phoenixRecordSinkProvider is null");
+        this.phoenixPageSinkProvider = requireNonNull(phoenixPageSinkProvider, "phoenixPageSinkProvider is null");
         this.phoenixTableProperties = requireNonNull(phoenixTableProperties, "phoenixTableProperties is null");
     }
 
@@ -116,9 +116,9 @@ public class PhoenixConnector
     }
 
     @Override
-    public ConnectorRecordSinkProvider getRecordSinkProvider()
+    public ConnectorPageSinkProvider getPageSinkProvider()
     {
-        return phoenixRecordSinkProvider;
+        return phoenixPageSinkProvider;
     }
 
     @Override
