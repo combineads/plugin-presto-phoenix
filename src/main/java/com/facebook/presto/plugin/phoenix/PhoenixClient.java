@@ -22,6 +22,7 @@ import com.facebook.presto.spi.PrestoException;
 import com.facebook.presto.spi.SchemaTableName;
 import com.facebook.presto.spi.TableNotFoundException;
 import com.facebook.presto.spi.predicate.TupleDomain;
+import com.facebook.presto.spi.type.ArrayType;
 import com.facebook.presto.spi.type.CharType;
 import com.facebook.presto.spi.type.DecimalType;
 import com.facebook.presto.spi.type.Type;
@@ -51,6 +52,7 @@ import org.apache.phoenix.schema.PColumn;
 import org.apache.phoenix.schema.PName;
 import org.apache.phoenix.schema.PTable;
 import org.apache.phoenix.schema.TableProperty;
+import org.apache.phoenix.schema.types.PDataType;
 
 import javax.annotation.Nullable;
 import javax.inject.Inject;
@@ -71,6 +73,7 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 import static com.facebook.presto.plugin.phoenix.PhoenixErrorCode.PHOENIX_ERROR;
+import static com.facebook.presto.plugin.phoenix.Types.isArrayType;
 import static com.facebook.presto.spi.StandardErrorCode.NOT_FOUND;
 import static com.facebook.presto.spi.StandardErrorCode.NOT_SUPPORTED;
 import static com.facebook.presto.spi.type.BigintType.BIGINT;
@@ -105,19 +108,19 @@ public class PhoenixClient
     private static final Logger log = Logger.get(PhoenixClient.class);
 
     private static final Map<Type, String> SQL_TYPES = ImmutableMap.<Type, String>builder()
-            .put(BOOLEAN, "boolean")
-            .put(BIGINT, "bigint")
-            .put(INTEGER, "integer")
-            .put(SMALLINT, "smallint")
-            .put(TINYINT, "tinyint")
-            .put(DOUBLE, "double")
-            .put(REAL, "float")
-            .put(VARBINARY, "varbinary")
-            .put(DATE, "date")
-            .put(TIME, "time")
-            .put(TIME_WITH_TIME_ZONE, "time")
-            .put(TIMESTAMP, "timestamp")
-            .put(TIMESTAMP_WITH_TIME_ZONE, "timestamp")
+            .put(BOOLEAN, "BOOLEAN")
+            .put(BIGINT, "BIGINT")
+            .put(INTEGER, "INTEGER")
+            .put(SMALLINT, "SMALLINT")
+            .put(TINYINT, "TINYINT")
+            .put(DOUBLE, "DOUBLE")
+            .put(REAL, "FLOAT")
+            .put(VARBINARY, "VARBINARY")
+            .put(DATE, "DATE")
+            .put(TIME, "TIME")
+            .put(TIME_WITH_TIME_ZONE, "TIME")
+            .put(TIMESTAMP, "TIMESTAMP")
+            .put(TIMESTAMP_WITH_TIME_ZONE, "TIMESTAMP")
             .build();
 
     protected final String connectorId;
@@ -218,7 +221,7 @@ public class PhoenixClient
                 boolean found = false;
                 while (resultSet.next()) {
                     found = true;
-                    Type columnType = toPrestoType(resultSet.getInt("DATA_TYPE"), resultSet.getInt("COLUMN_SIZE"), resultSet.getInt("DECIMAL_DIGITS"));
+                    Type columnType = toPrestoType(resultSet.getInt("DATA_TYPE"), resultSet.getInt("COLUMN_SIZE"), resultSet.getInt("DECIMAL_DIGITS"), resultSet.getInt("ARRAY_SIZE"), resultSet.getInt("TYPE_ID"));
                     // skip unsupported column types
                     if (columnType != null) {
                         String columnName = resultSet.getString("COLUMN_NAME");
@@ -463,7 +466,7 @@ public class PhoenixClient
         }
     }
 
-    protected Type toPrestoType(int phoenixType, int columnSize, int decimalDigits)
+    protected Type toPrestoType(int phoenixType, int columnSize, int decimalDigits, int arraySize, int rawTypeId)
     {
         switch (phoenixType) {
             case Types.BIT:
@@ -506,11 +509,15 @@ public class PhoenixClient
                 return TIME;
             case Types.TIMESTAMP:
                 return TIMESTAMP;
+            case Types.ARRAY:
+                PDataType<?> baseType = PDataType.fromTypeId(rawTypeId - PDataType.ARRAY_TYPE_BASE);
+                Type basePrestoType = toPrestoType(baseType.getSqlType(), columnSize, decimalDigits, arraySize, rawTypeId);
+                return new ArrayType(basePrestoType);
         }
         return null;
     }
 
-    protected String toSqlType(Type type)
+    protected static String toSqlType(Type type)
     {
         if (type instanceof VarcharType) {
             if (((VarcharType) type).isUnbounded()) {
@@ -534,10 +541,16 @@ public class PhoenixClient
             return type.toString();
         }
 
+        if (isArrayType(type)) {
+            Type elementType = type.getTypeParameters().get(0);
+            sqlType = toSqlType(elementType);
+            return sqlType + " ARRAY[]";
+        }
+
         throw new PrestoException(NOT_SUPPORTED, "Unsupported column type: " + type.getTypeSignature());
     }
 
-    protected String getFullTableName(String catalog, String schema, String table)
+    protected static String getFullTableName(String catalog, String schema, String table)
     {
         StringBuilder sb = new StringBuilder();
         if (!isNullOrEmpty(catalog)) {

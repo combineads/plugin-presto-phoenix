@@ -25,6 +25,7 @@ import com.google.common.primitives.SignedBytes;
 import io.airlift.slice.Slice;
 import org.joda.time.DateTimeZone;
 
+import java.sql.Array;
 import java.sql.Connection;
 import java.sql.Date;
 import java.sql.PreparedStatement;
@@ -35,6 +36,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
+import static com.facebook.presto.plugin.phoenix.PhoenixClient.toSqlType;
 import static com.facebook.presto.plugin.phoenix.PhoenixErrorCode.PHOENIX_ERROR;
 import static com.facebook.presto.plugin.phoenix.PhoenixErrorCode.PHOENIX_NON_TRANSIENT_ERROR;
 import static com.facebook.presto.spi.StandardErrorCode.NOT_SUPPORTED;
@@ -92,7 +94,16 @@ public class PhoenixPageSink
         try {
             for (int position = 0; position < page.getPositionCount(); position++) {
                 for (int channel = 0; channel < page.getChannelCount(); channel++) {
-                    appendColumn(page, position, channel);
+                    Block block = page.getBlock(channel);
+                    int parameter = channel + 1;
+                    Type type = columnTypes.get(channel);
+                    Object value = getObjectValue(type, block, position);
+                    if (value instanceof Array) {
+                        statement.setArray(parameter, (Array) value);
+                    }
+                    else {
+                        statement.setObject(parameter, value);
+                    }
                 }
 
                 statement.addBatch();
@@ -112,57 +123,64 @@ public class PhoenixPageSink
         return NOT_BLOCKED;
     }
 
-    private void appendColumn(Page page, int position, int channel)
-            throws SQLException
+    private Object getObjectValue(Type type, Block block, int position) throws SQLException
     {
-        Block block = page.getBlock(channel);
-        int parameter = channel + 1;
-
         if (block.isNull(position)) {
-            statement.setObject(parameter, null);
-            return;
+            return null;
         }
 
-        Type type = columnTypes.get(channel);
         if (BOOLEAN.equals(type)) {
-            statement.setBoolean(parameter, type.getBoolean(block, position));
+            return type.getBoolean(block, position);
         }
         else if (BIGINT.equals(type)) {
-            statement.setLong(parameter, type.getLong(block, position));
+            return type.getLong(block, position);
         }
         else if (INTEGER.equals(type)) {
-            statement.setInt(parameter, toIntExact(type.getLong(block, position)));
+            return toIntExact(type.getLong(block, position));
         }
         else if (SMALLINT.equals(type)) {
-            statement.setShort(parameter, Shorts.checkedCast(type.getLong(block, position)));
+            return Shorts.checkedCast(type.getLong(block, position));
         }
         else if (TINYINT.equals(type)) {
-            statement.setByte(parameter, SignedBytes.checkedCast(type.getLong(block, position)));
+            return SignedBytes.checkedCast(type.getLong(block, position));
         }
         else if (DOUBLE.equals(type)) {
-            statement.setDouble(parameter, type.getDouble(block, position));
+            return type.getDouble(block, position);
         }
         else if (REAL.equals(type)) {
-            statement.setFloat(parameter, intBitsToFloat(toIntExact(type.getLong(block, position))));
+            return intBitsToFloat(toIntExact(type.getLong(block, position)));
         }
         else if (type instanceof DecimalType) {
-            statement.setBigDecimal(parameter, readBigDecimal((DecimalType) type, block, position));
+            return readBigDecimal((DecimalType) type, block, position);
         }
         else if (isVarcharType(type) || isCharType(type)) {
-            statement.setString(parameter, type.getSlice(block, position).toStringUtf8());
+            return type.getSlice(block, position).toStringUtf8();
         }
         else if (VARBINARY.equals(type)) {
-            statement.setBytes(parameter, type.getSlice(block, position).getBytes());
+            return type.getSlice(block, position).getBytes();
         }
         else if (DATE.equals(type)) {
             // convert to midnight in default time zone
             long utcMillis = DAYS.toMillis(type.getLong(block, position));
             long localMillis = getInstanceUTC().getZone().getMillisKeepLocal(DateTimeZone.getDefault(), utcMillis);
-            statement.setDate(parameter, new Date(localMillis));
+            return new Date(localMillis);
         }
         else if (TIMESTAMP.equals(type)) {
             long millisUtc = type.getLong(block, position);
-            statement.setTimestamp(parameter, new Timestamp(millisUtc));
+            return new Timestamp(millisUtc);
+        }
+        else if (Types.isArrayType(type)) {
+            Type elementType = type.getTypeParameters().get(0);
+
+            Block arrayBlock = block.getObject(position, Block.class);
+
+            Object[] elements = new Object[arrayBlock.getPositionCount()];
+            for (int i = 0; i < arrayBlock.getPositionCount(); i++) {
+                Object element = getObjectValue(elementType, arrayBlock, i);
+                elements[i] = element;
+            }
+
+            return connection.createArrayOf(toSqlType(elementType), elements);
         }
         else {
             throw new PrestoException(NOT_SUPPORTED, "Unsupported column type: " + type.getDisplayName());

@@ -15,6 +15,9 @@ package com.facebook.presto.plugin.phoenix;
 
 import com.facebook.presto.spi.PrestoException;
 import com.facebook.presto.spi.RecordCursor;
+import com.facebook.presto.spi.block.Block;
+import com.facebook.presto.spi.block.BlockBuilder;
+import com.facebook.presto.spi.block.BlockBuilderStatus;
 import com.facebook.presto.spi.type.BigintType;
 import com.facebook.presto.spi.type.CharType;
 import com.facebook.presto.spi.type.DateType;
@@ -26,6 +29,7 @@ import com.facebook.presto.spi.type.TimeType;
 import com.facebook.presto.spi.type.TimestampType;
 import com.facebook.presto.spi.type.TinyintType;
 import com.facebook.presto.spi.type.Type;
+import com.facebook.presto.spi.type.TypeUtils;
 import com.facebook.presto.spi.type.VarbinaryType;
 import com.facebook.presto.spi.type.VarcharType;
 import com.google.common.base.CharMatcher;
@@ -48,6 +52,7 @@ import org.apache.phoenix.mapreduce.util.PhoenixConfigurationUtil;
 import org.apache.phoenix.schema.tuple.ResultTuple;
 import org.joda.time.chrono.ISOChronology;
 
+import java.lang.reflect.Array;
 import java.lang.reflect.Field;
 import java.math.BigDecimal;
 import java.sql.Connection;
@@ -56,6 +61,8 @@ import java.sql.SQLException;
 import java.sql.Time;
 import java.sql.Timestamp;
 import java.util.List;
+import java.util.Map;
+import java.util.Map.Entry;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
@@ -269,7 +276,73 @@ public class PhoenixRecordCursor
     @Override
     public Object getObject(int field)
     {
+        Type type = getType(field);
+        checkArgument(Types.isArrayType(type), "Expected field %s to be a type of array but is %s", field, type);
+
+        if (Types.isArrayType(type)) {
+            try {
+                Object[] result = createArrayFromArrayObject(resultSet.getArray(field + 1).getArray());
+                Type elementType = Types.getElementType(type);
+                return getBlockFromArray(elementType, result);
+            }
+            catch (SQLException | RuntimeException e) {
+                throw handleSqlException(e);
+            }
+        }
+
         throw new UnsupportedOperationException();
+    }
+
+    private Object[] createArrayFromArrayObject(Object o)
+    {
+        if (!o.getClass().isArray()) {
+            return null;
+        }
+
+        if (!o.getClass().getComponentType().isPrimitive()) {
+            return (Object[]) o;
+        }
+
+        int element_count = Array.getLength(o);
+        Object elements[] = new Object[element_count];
+
+        for (int i = 0; i < element_count; i++) {
+            elements[i] = Array.get(o, i);
+        }
+
+        return elements;
+    }
+
+    private Block getBlockFromArray(Type elementType, Object[] array)
+    {
+        BlockBuilder builder = elementType.createBlockBuilder(new BlockBuilderStatus(), array.length);
+        for (Object item : array) {
+            writeObject(builder, elementType, item);
+        }
+        return builder.build();
+    }
+
+    private void writeObject(BlockBuilder builder, Type type, Object obj)
+    {
+        if (Types.isArrayType(type)) {
+            BlockBuilder arrayBldr = builder.beginBlockEntry();
+            Type elementType = Types.getElementType(type);
+            for (Object item : (List<?>) obj) {
+                writeObject(arrayBldr, elementType, item);
+            }
+            builder.closeEntry();
+        }
+        else if (Types.isMapType(type)) {
+            BlockBuilder mapBlockBuilder = builder.beginBlockEntry();
+            for (Entry<?, ?> entry : ((Map<?, ?>) obj).entrySet()) {
+                writeObject(mapBlockBuilder, Types.getKeyType(type), entry.getKey());
+                writeObject(mapBlockBuilder, Types.getValueType(type), entry.getValue());
+            }
+            builder.closeEntry();
+        }
+        else {
+            TypeUtils.writeNativeValue(type, builder, obj);
+        }
     }
 
     @Override

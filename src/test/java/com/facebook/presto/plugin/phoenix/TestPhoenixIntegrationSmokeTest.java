@@ -27,6 +27,7 @@ import java.time.LocalDateTime;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertTrue;
 
 @Test
@@ -86,5 +87,41 @@ public class TestPhoenixIntegrationSmokeTest
         assertUpdate("DROP TABLE test_types_table");
 
         assertFalse(getQueryRunner().tableExists(getSession(), "test_types_table"));
+    }
+
+    @Test
+    public void testArrays()
+    {
+        assertUpdate("CREATE TABLE tmp_array1 AS SELECT 'key' as rkey, ARRAY[1, 2, NULL] AS col", 1);
+        assertQuery("SELECT col[2] FROM tmp_array1", "SELECT 2");
+        assertQuery("SELECT col[3] FROM tmp_array1", "SELECT NULL");
+
+        assertUpdate("CREATE TABLE tmp_array2 AS SELECT 'key' as rkey, ARRAY[1.0E0, 2.5E0, 3.5E0] AS col", 1);
+        assertQuery("SELECT col[2] FROM tmp_array2", "SELECT 2.5");
+
+        assertUpdate("CREATE TABLE tmp_array3 AS SELECT 'key' as rkey, ARRAY['puppies', 'kittens', NULL] AS col", 1);
+        assertQuery("SELECT col[2] FROM tmp_array3", "SELECT 'kittens'");
+        assertQuery("SELECT col[3] FROM tmp_array3", "SELECT NULL");
+
+        assertUpdate("CREATE TABLE tmp_array4 AS SELECT 'key' as rkey, ARRAY[TRUE, NULL] AS col", 1);
+        assertQuery("SELECT col[1] FROM tmp_array4", "SELECT TRUE");
+        assertQuery("SELECT col[2] FROM tmp_array4", "SELECT NULL");
+    }
+
+    @Test
+    public void testTemporalArrays()
+    {
+        assertUpdate("CREATE TABLE tmp_array7 AS SELECT 'key' as rkey, ARRAY[DATE '2014-09-30'] AS col", 1);
+        assertOneNotNullResult("SELECT col[1] FROM tmp_array7");
+        assertUpdate("CREATE TABLE tmp_array8 AS SELECT 'key' as rkey, ARRAY[TIMESTAMP '2001-08-22 03:04:05.321'] AS col", 1);
+        assertOneNotNullResult("SELECT col[1] FROM tmp_array8");
+    }
+
+    private void assertOneNotNullResult(String query)
+    {
+        MaterializedResult results = getQueryRunner().execute(getSession(), query).toTestTypes();
+        assertEquals(results.getRowCount(), 1);
+        assertEquals(results.getMaterializedRows().get(0).getFieldCount(), 1);
+        assertNotNull(results.getMaterializedRows().get(0).getField(0));
     }
 }
