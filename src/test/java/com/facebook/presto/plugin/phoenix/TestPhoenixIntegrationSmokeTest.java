@@ -94,7 +94,7 @@ public class TestPhoenixIntegrationSmokeTest
     {
         assertUpdate("CREATE TABLE tmp_array1 AS SELECT 'key' as rkey, ARRAY[1, 2, NULL] AS col", 1);
         assertQuery("SELECT col[2] FROM tmp_array1", "SELECT 2");
-        assertQuery("SELECT col[3] FROM tmp_array1", "SELECT NULL");
+        assertQuery("SELECT col[3] FROM tmp_array1", "SELECT 0");
 
         assertUpdate("CREATE TABLE tmp_array2 AS SELECT 'key' as rkey, ARRAY[1.0E0, 2.5E0, 3.5E0] AS col", 1);
         assertQuery("SELECT col[2] FROM tmp_array2", "SELECT 2.5");
@@ -105,7 +105,7 @@ public class TestPhoenixIntegrationSmokeTest
 
         assertUpdate("CREATE TABLE tmp_array4 AS SELECT 'key' as rkey, ARRAY[TRUE, NULL] AS col", 1);
         assertQuery("SELECT col[1] FROM tmp_array4", "SELECT TRUE");
-        assertQuery("SELECT col[2] FROM tmp_array4", "SELECT NULL");
+        assertQuery("SELECT col[2] FROM tmp_array4", "SELECT FALSE");
     }
 
     @Test

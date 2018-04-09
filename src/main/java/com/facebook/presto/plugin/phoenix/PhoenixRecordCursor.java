@@ -303,10 +303,10 @@ public class PhoenixRecordCursor
             return (Object[]) o;
         }
 
-        int element_count = Array.getLength(o);
-        Object elements[] = new Object[element_count];
+        int elementCount = Array.getLength(o);
+        Object[] elements = new Object[elementCount];
 
-        for (int i = 0; i < element_count; i++) {
+        for (int i = 0; i < elementCount; i++) {
             elements[i] = Array.get(o, i);
         }
 

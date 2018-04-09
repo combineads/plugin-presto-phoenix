@@ -180,7 +180,7 @@ public class PhoenixPageSink
                 elements[i] = element;
             }
 
-            return connection.createArrayOf(toSqlType(elementType), elements);
+            return connection.createArrayOf(toSqlType(elementType, true), elements);
         }
         else {
             throw new PrestoException(NOT_SUPPORTED, "Unsupported column type: " + type.getDisplayName());

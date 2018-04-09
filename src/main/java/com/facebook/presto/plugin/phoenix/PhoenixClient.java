@@ -344,14 +344,14 @@ public class PhoenixClient
                 String typeStatement;
 
                 if (rowkeys.size() == 0) {
-                    typeStatement = toSqlType(column.getType()) + " not null";
+                    typeStatement = toSqlType(column.getType(), false) + " not null";
                     rowkeys.add(columnName);
                 }
                 else if (pkColumns.stream().anyMatch(columnName::equalsIgnoreCase)) {
-                    typeStatement = toSqlType(column.getType()) + " not null";
+                    typeStatement = toSqlType(column.getType(), false) + " not null";
                 }
                 else {
-                    typeStatement = toSqlType(column.getType());
+                    typeStatement = toSqlType(column.getType(), false);
                 }
                 columnList.add(new StringBuilder()
                         .append(columnName)
@@ -517,19 +517,19 @@ public class PhoenixClient
         return null;
     }
 
-    protected static String toSqlType(Type type)
+    protected static String toSqlType(Type type, boolean needUnbounded)
     {
         if (type instanceof VarcharType) {
-            if (((VarcharType) type).isUnbounded()) {
-                return "varchar";
+            if (needUnbounded || ((VarcharType) type).isUnbounded()) {
+                return "VARCHAR";
             }
-            return "varchar(" + ((VarcharType) type).getLengthSafe() + ")";
+            return "VARCHAR(" + ((VarcharType) type).getLengthSafe() + ")";
         }
         if (type instanceof CharType) {
-            if (((CharType) type).getLength() == CharType.MAX_LENGTH) {
-                return "char";
+            if (needUnbounded || ((CharType) type).getLength() == CharType.MAX_LENGTH) {
+                return "CHAR";
             }
-            return "char(" + ((CharType) type).getLength() + ")";
+            return "CHAR(" + ((CharType) type).getLength() + ")";
         }
 
         String sqlType = SQL_TYPES.get(type);
@@ -538,12 +538,12 @@ public class PhoenixClient
         }
 
         if (type instanceof DecimalType) {
-            return type.toString();
+            return type.toString().toUpperCase();
         }
 
         if (isArrayType(type)) {
             Type elementType = type.getTypeParameters().get(0);
-            sqlType = toSqlType(elementType);
+            sqlType = toSqlType(elementType, true);
             return sqlType + " ARRAY[]";
         }
 
