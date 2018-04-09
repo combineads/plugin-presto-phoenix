@@ -15,7 +15,6 @@ package com.facebook.presto.plugin.phoenix;
 
 import com.facebook.presto.spi.PrestoException;
 import com.facebook.presto.spi.RecordCursor;
-import com.facebook.presto.spi.block.Block;
 import com.facebook.presto.spi.block.BlockBuilder;
 import com.facebook.presto.spi.block.BlockBuilderStatus;
 import com.facebook.presto.spi.type.BigintType;
@@ -25,11 +24,11 @@ import com.facebook.presto.spi.type.DecimalType;
 import com.facebook.presto.spi.type.IntegerType;
 import com.facebook.presto.spi.type.RealType;
 import com.facebook.presto.spi.type.SmallintType;
+import com.facebook.presto.spi.type.StandardTypes;
 import com.facebook.presto.spi.type.TimeType;
 import com.facebook.presto.spi.type.TimestampType;
 import com.facebook.presto.spi.type.TinyintType;
 import com.facebook.presto.spi.type.Type;
-import com.facebook.presto.spi.type.TypeUtils;
 import com.facebook.presto.spi.type.VarbinaryType;
 import com.facebook.presto.spi.type.VarcharType;
 import com.google.common.base.CharMatcher;
@@ -60,16 +59,20 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Time;
 import java.sql.Timestamp;
+import java.util.Date;
 import java.util.List;
-import java.util.Map;
-import java.util.Map.Entry;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 import static com.facebook.presto.plugin.phoenix.PhoenixClient.buildInputSplit;
 import static com.facebook.presto.spi.StandardErrorCode.GENERIC_INTERNAL_ERROR;
+import static com.facebook.presto.spi.type.BigintType.BIGINT;
+import static com.facebook.presto.spi.type.DateType.DATE;
 import static com.facebook.presto.spi.type.Decimals.encodeScaledValue;
 import static com.facebook.presto.spi.type.Decimals.isShortDecimal;
+import static com.facebook.presto.spi.type.IntegerType.INTEGER;
+import static com.facebook.presto.spi.type.TimeType.TIME;
+import static com.facebook.presto.spi.type.TimestampType.TIMESTAMP;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkState;
 import static io.airlift.slice.Slices.utf8Slice;
@@ -283,7 +286,12 @@ public class PhoenixRecordCursor
             try {
                 Object[] result = createArrayFromArrayObject(resultSet.getArray(field + 1).getArray());
                 Type elementType = Types.getElementType(type);
-                return getBlockFromArray(elementType, result);
+
+                BlockBuilder builder = elementType.createBlockBuilder(new BlockBuilderStatus(), result.length);
+                for (Object value : result) {
+                    appendTo(elementType, value, builder);
+                }
+                return builder.build();
             }
             catch (SQLException | RuntimeException e) {
                 throw handleSqlException(e);
@@ -313,35 +321,70 @@ public class PhoenixRecordCursor
         return elements;
     }
 
-    private Block getBlockFromArray(Type elementType, Object[] array)
+    private void appendTo(Type type, Object value, BlockBuilder output)
     {
-        BlockBuilder builder = elementType.createBlockBuilder(new BlockBuilderStatus(), array.length);
-        for (Object item : array) {
-            writeObject(builder, elementType, item);
+        if (value == null) {
+            output.appendNull();
+            return;
         }
-        return builder.build();
+
+        Class<?> javaType = type.getJavaType();
+        try {
+            if (javaType == boolean.class) {
+                type.writeBoolean(output, (Boolean) value);
+            }
+            else if (javaType == long.class) {
+                if (type.equals(BIGINT)) {
+                    type.writeLong(output, ((Number) value).longValue());
+                }
+                else if (type.equals(INTEGER)) {
+                    type.writeLong(output, ((Number) value).intValue());
+                }
+                else if (type.equals(DATE)) {
+                    // JDBC returns a date using a timestamp at midnight in the JVM timezone
+                    long localMillis = ((Date) value).getTime();
+                    // Convert it to a midnight in UTC
+                    long utcMillis = ISOChronology.getInstance().getZone().getMillisKeepLocal(UTC, localMillis);
+                    // convert to days
+                    type.writeLong(output, TimeUnit.MILLISECONDS.toDays(utcMillis));
+                }
+                else if (type.equals(TIME)) {
+                    type.writeLong(output, UTC_CHRONOLOGY.millisOfDay().get(((Date) value).getTime()));
+                }
+                else if (type.equals(TIMESTAMP)) {
+                    type.writeLong(output, ((Date) value).getTime());
+                }
+                else {
+                    throw new PrestoException(GENERIC_INTERNAL_ERROR, "Unhandled type for " + javaType.getSimpleName() + ":" + type.getTypeSignature());
+                }
+            }
+            else if (javaType == double.class) {
+                type.writeDouble(output, ((Number) value).doubleValue());
+            }
+            else if (javaType == Slice.class) {
+                writeSlice(output, type, value);
+            }
+            else {
+                throw new PrestoException(GENERIC_INTERNAL_ERROR, "Unhandled type for " + javaType.getSimpleName() + ":" + type.getTypeSignature());
+            }
+        }
+        catch (ClassCastException ignore) {
+            // returns null instead of raising exception
+            output.appendNull();
+        }
     }
 
-    private void writeObject(BlockBuilder builder, Type type, Object obj)
+    private void writeSlice(BlockBuilder output, Type type, Object value)
     {
-        if (Types.isArrayType(type)) {
-            BlockBuilder arrayBldr = builder.beginBlockEntry();
-            Type elementType = Types.getElementType(type);
-            for (Object item : (List<?>) obj) {
-                writeObject(arrayBldr, elementType, item);
-            }
-            builder.closeEntry();
+        String base = type.getTypeSignature().getBase();
+        if (base.equals(StandardTypes.VARCHAR)) {
+            type.writeSlice(output, utf8Slice((String)value));
         }
-        else if (Types.isMapType(type)) {
-            BlockBuilder mapBlockBuilder = builder.beginBlockEntry();
-            for (Entry<?, ?> entry : ((Map<?, ?>) obj).entrySet()) {
-                writeObject(mapBlockBuilder, Types.getKeyType(type), entry.getKey());
-                writeObject(mapBlockBuilder, Types.getValueType(type), entry.getValue());
-            }
-            builder.closeEntry();
+        else if (base.equals(StandardTypes.CHAR)) {
+            type.writeSlice(output, utf8Slice(CharMatcher.is(' ').trimTrailingFrom((String)value)));
         }
         else {
-            TypeUtils.writeNativeValue(type, builder, obj);
+            throw new PrestoException(GENERIC_INTERNAL_ERROR, "Unhandled type for Slice: " + type.getTypeSignature());
         }
     }
 
