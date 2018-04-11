@@ -13,13 +13,13 @@
 	<packaging>presto-plugin</packaging>
 
 	<properties>
-		<dep.phoenix.version>1.3</dep.phoenix.version>
+		<dep.phoenix.version>1.0</dep.phoenix.version>
 	</properties>
 
 	<dependencies>
 		<dependency>
-			<groupId>com.facebook.presto</groupId>
-			<artifactId>phoenix-core-shaded</artifactId>
+			<groupId>com.github.combineads</groupId>
+			<artifactId>presto-phoenix-core-shaded</artifactId>
 			<version>${dep.phoenix.version}</version>
 			<exclusions>
 				<exclusion>
@@ -54,8 +54,8 @@
 		</dependency>
 
 		<dependency>
-			<groupId>com.facebook.presto</groupId>
-			<artifactId>hbase-testing-util-shaded</artifactId>
+			<groupId>com.github.combineads</groupId>
+			<artifactId>presto-hbase-testing-util-shaded</artifactId>
 			<version>${dep.phoenix.version}</version>
 			<scope>test</scope>
 			<exclusions>
