@@ -378,10 +378,10 @@ public class PhoenixRecordCursor
     {
         String base = type.getTypeSignature().getBase();
         if (base.equals(StandardTypes.VARCHAR)) {
-            type.writeSlice(output, utf8Slice((String)value));
+            type.writeSlice(output, utf8Slice((String) value));
         }
         else if (base.equals(StandardTypes.CHAR)) {
-            type.writeSlice(output, utf8Slice(CharMatcher.is(' ').trimTrailingFrom((String)value)));
+            type.writeSlice(output, utf8Slice(CharMatcher.is(' ').trimTrailingFrom((String) value)));
         }
         else {
             throw new PrestoException(GENERIC_INTERNAL_ERROR, "Unhandled type for Slice: " + type.getTypeSignature());
