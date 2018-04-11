@@ -1,12 +1,11 @@
 <?xml version="1.0"?>
-<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
 	<modelVersion>4.0.0</modelVersion>
 	<name>Presto - Phoenix Connector Shaded</name>
 
 	<groupId>com.facebook.presto</groupId>
 	<artifactId>presto-phoenix-connector-shaded-root</artifactId>
-	<version>1.2</version>
+	<version>1.3</version>
 
 	<packaging>pom</packaging>
 
@@ -15,8 +14,6 @@
 		<maven.test.skip>true</maven.test.skip>
 		<!-- Don't make a source-jar -->
 		<source.skip>true</source.skip>
-		<phoenix.version>4.12.0-HBase-1.2.0-cdh5.12.1</phoenix.version>
-		<hbase.version>1.2.5</hbase.version>
 		<shaded.package>com.facebook.presto.phoenix.shaded</shaded.package>
 	</properties>
 
@@ -24,6 +21,33 @@
 		<module>hbase-testing-util-shaded</module>
 		<module>phoenix-core-shaded</module>
 	</modules>
+
+
+	<profiles>
+		<profile>
+			<id>default</id>
+			<activation>
+				<activeByDefault>true</activeByDefault>
+			</activation>
+			<properties>
+				<phoenix.version>4.13.1-HBase-1.2</phoenix.version>
+				<hbase.version>1.2.5</hbase.version>
+			</properties>
+		</profile>
+		<profile>
+			<id>cdh</id>
+			<properties>
+				<phoenix.version>4.13.2-cdh5.11.2</phoenix.version>
+				<hbase.version>1.2.0-cdh5.11.2</hbase.version>
+			</properties>
+			<repositories>
+				<repository>
+					<id>cloudera</id>
+					<url>https://repository.cloudera.com/artifactory/cloudera-repos/</url>
+				</repository>
+			</repositories>
+		</profile>
+	</profiles>
 
 	<build>
 		<plugins>
@@ -62,7 +86,6 @@
 										<exclude>org.slf4j:*</exclude>
 										<exclude>com.google.code.findbugs:*</exclude>
 										<exclude>com.github.stephenc.findbugs:*</exclude>
-										<exclude>org.apache.htrace:*</exclude>
 										<exclude>org.apache.yetus:*</exclude>
 										<exclude>log4j:*</exclude>
 										<exclude>commons-logging:*</exclude>
@@ -161,8 +184,7 @@
 										<pattern>org.jets3t</pattern>
 										<shadedPattern>${shaded.package}.org.jets3t</shadedPattern>
 									</relocation>
-									<!-- poorly named add-on package from jets3t dependency. TODO can
-										we just exclude these? -->
+									<!-- poorly named add-on package from jets3t dependency. TODO can we just exclude these? -->
 									<relocation>
 										<pattern>contribs.mx</pattern>
 										<shadedPattern>${shaded.package}.contribs.mx</shadedPattern>
@@ -391,11 +413,8 @@
 									</relocation>
 								</relocations>
 								<transformers>
-									<!-- Need to filter out some extraneous license files. Don't use
-										the ApacheLicenseRT because it just removes all META-INF/LICENSE(.txt)? files,
-										including ours. -->
-									<transformer
-										implementation="org.apache.maven.plugins.shade.resource.DontIncludeResourceTransformer">
+									<!-- Need to filter out some extraneous license files. Don't use the ApacheLicenseRT because it just removes all META-INF/LICENSE(.txt)? files, including ours. -->
+									<transformer implementation="org.apache.maven.plugins.shade.resource.DontIncludeResourceTransformer">
 										<resources>
 											<resource>LICENSE.txt</resource>
 											<resource>ASL2.0</resource>
@@ -405,8 +424,7 @@
 										</resources>
 									</transformer>
 									<!-- Where notices exist, just concat them -->
-									<transformer
-										implementation="org.apache.maven.plugins.shade.resource.ApacheNoticeResourceTransformer">
+									<transformer implementation="org.apache.maven.plugins.shade.resource.ApacheNoticeResourceTransformer">
 										<addHeader>false</addHeader>
 										<projectName>${project.name}</projectName>
 									</transformer>
