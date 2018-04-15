@@ -38,6 +38,7 @@ import org.apache.phoenix.jdbc.PhoenixResultSet;
 import org.apache.phoenix.mapreduce.PhoenixInputFormat;
 import org.apache.phoenix.mapreduce.PhoenixInputSplit;
 import org.apache.phoenix.mapreduce.util.PhoenixConfigurationUtil;
+import org.apache.phoenix.schema.tuple.ResultTuple;
 import org.joda.time.chrono.ISOChronology;
 
 import java.lang.reflect.Field;
@@ -71,6 +72,7 @@ import static java.lang.Float.floatToRawIntBits;
 import static java.lang.reflect.Array.get;
 import static java.lang.reflect.Array.getLength;
 import static java.util.stream.Collectors.toList;
+import static org.apache.hadoop.hbase.client.Result.getTotalSizeOfCells;
 import static org.joda.time.DateTimeZone.UTC;
 
 public class PhoenixPageSource
@@ -83,18 +85,22 @@ public class PhoenixPageSource
 
     private final List<String> columnNames;
     private final List<Type> columnTypes;
+    private final PageBuilder pageBuilder;
 
     private final PhoenixConnection connection;
     private final PhoenixResultSet resultSet;
+
     private boolean closed;
 
-    private long count;
-    private boolean finished;
+    private long bytesRead;
+    private long nanoStart;
+    private long nanoEnd;
 
     public PhoenixPageSource(PhoenixClient phoenixClient, PhoenixSplit split, List<PhoenixColumnHandle> columns)
     {
         this.columnNames = columns.stream().map(PhoenixColumnHandle::getColumnName).collect(toList());
         this.columnTypes = columns.stream().map(PhoenixColumnHandle::getColumnType).collect(toList());
+        this.pageBuilder = new PageBuilder(columnTypes);
 
         try {
             connection = ((PhoenixClient) phoenixClient).getConnection();
@@ -130,53 +136,64 @@ public class PhoenixPageSource
     @Override
     public long getCompletedBytes()
     {
-        return count;
+        return bytesRead;
     }
 
     @Override
     public long getReadTimeNanos()
     {
-        return 0;
-    }
-
-    @Override
-    public boolean isFinished()
-    {
-        return finished;
+        return nanoStart > 0L ? (nanoEnd == 0 ? System.nanoTime() : nanoEnd) - nanoStart : 0L;
     }
 
     @Override
     public long getSystemMemoryUsage()
     {
-        return 0L;
+        return pageBuilder.getSizeInBytes();
+    }
+
+    @Override
+    public boolean isFinished()
+    {
+        return closed && pageBuilder.isEmpty();
     }
 
     @Override
     public Page getNextPage()
     {
-        PageBuilder pageBuilder = new PageBuilder(columnTypes);
+        if (nanoStart == 0) {
+            nanoStart = System.nanoTime();
+        }
 
-        count = 0;
-        try {
-            for (int i = 0; i < ROWS_PER_REQUEST; i++) {
-                if (!resultSet.next()) {
-                    finished = true;
-                    break;
-                }
-                count++;
+        if (!closed) {
+            try {
+                for (int i = 0; i < ROWS_PER_REQUEST; i++) {
+                    if (!resultSet.next()) {
+                        close();
+                        break;
+                    }
+                    bytesRead += getTotalSizeOfCells(((ResultTuple) resultSet.getCurrentRow()).getResult());
 
-                pageBuilder.declarePosition();
-                for (int column = 0; column < columnTypes.size(); column++) {
-                    BlockBuilder output = pageBuilder.getBlockBuilder(column);
-                    appendTo(columnTypes.get(column), resultSet.getObject(columnNames.get(column)), output);
+                    pageBuilder.declarePosition();
+                    for (int column = 0; column < columnTypes.size(); column++) {
+                        BlockBuilder output = pageBuilder.getBlockBuilder(column);
+                        appendTo(columnTypes.get(column), resultSet.getObject(columnNames.get(column)), output);
+                    }
                 }
             }
+            catch (SQLException | RuntimeException e) {
+                throw handleSqlException(e);
+            }
         }
-        catch (SQLException | RuntimeException e) {
-            e.printStackTrace();
-            throw handleSqlException(e);
+
+        // only return a page if the buffer is full or we are finishing
+        if (pageBuilder.isEmpty() || (!closed && !pageBuilder.isFull())) {
+            return null;
         }
-        return pageBuilder.build();
+
+        Page page = pageBuilder.build();
+        pageBuilder.reset();
+
+        return page;
     }
 
     private void appendTo(Type type, Object value, BlockBuilder output)
@@ -324,6 +341,7 @@ public class PhoenixPageSource
         catch (SQLException e) {
             throw new RuntimeException(e);
         }
+        nanoEnd = System.nanoTime();
     }
 
     private RuntimeException handleSqlException(Exception e)
