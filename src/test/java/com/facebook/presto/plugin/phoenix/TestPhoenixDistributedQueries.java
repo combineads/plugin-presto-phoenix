@@ -15,6 +15,7 @@ package com.facebook.presto.plugin.phoenix;
 
 import com.facebook.presto.tests.AbstractTestQueries;
 import com.google.common.collect.ImmutableMap;
+import io.airlift.tpch.TpchTable;
 import org.testng.annotations.Test;
 
 @Test
@@ -24,7 +25,7 @@ public class TestPhoenixDistributedQueries
     public TestPhoenixDistributedQueries()
             throws Exception
     {
-        super(() -> PhoenixQueryRunner.createPhoenixQueryRunner(ImmutableMap.of()));
+        super(() -> PhoenixQueryRunner.createPhoenixQueryRunner(ImmutableMap.of(), TpchTable.getTables()));
     }
 
     @Test

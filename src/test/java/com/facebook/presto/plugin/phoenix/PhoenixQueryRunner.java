@@ -27,6 +27,7 @@ import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.List;
 import java.util.Map;
 
 import static com.facebook.presto.testing.TestingSession.testSessionBuilder;
@@ -47,10 +48,12 @@ public final class PhoenixQueryRunner
     {
     }
 
-    public static QueryRunner createPhoenixQueryRunner(Map<String, String> extraProperties)
+    public static QueryRunner createPhoenixQueryRunner(Map<String, String> extraProperties, List<TpchTable<?>> tables)
             throws Exception
     {
-        DistributedQueryRunner queryRunner = new DistributedQueryRunner(createSession(), 4, extraProperties);
+        DistributedQueryRunner queryRunner = DistributedQueryRunner.builder(createSession())
+                .setNodeCount(4)
+                .setExtraProperties(extraProperties).build();
 
         queryRunner.installPlugin(new TpchPlugin());
         queryRunner.createCatalog("tpch", "tpch");
@@ -65,7 +68,7 @@ public final class PhoenixQueryRunner
 
         if (!tpchLoaded) {
             createSchema(server, TPCH_SCHEMA);
-            copyTpchTables(queryRunner, "tpch", TINY_SCHEMA_NAME, createSession(), TpchTable.getTables());
+            copyTpchTables(queryRunner, "tpch", TINY_SCHEMA_NAME, createSession(), tables);
             tpchLoaded = true;
         }
 
