@@ -73,7 +73,7 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 import static com.facebook.presto.plugin.phoenix.PhoenixErrorCode.PHOENIX_ERROR;
-import static com.facebook.presto.plugin.phoenix.Types.isArrayType;
+import static com.facebook.presto.plugin.phoenix.TypeUtils.isArrayType;
 import static com.facebook.presto.spi.StandardErrorCode.NOT_FOUND;
 import static com.facebook.presto.spi.StandardErrorCode.NOT_SUPPORTED;
 import static com.facebook.presto.spi.type.BigintType.BIGINT;

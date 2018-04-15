@@ -39,6 +39,7 @@ import java.util.concurrent.CompletableFuture;
 import static com.facebook.presto.plugin.phoenix.PhoenixClient.toSqlType;
 import static com.facebook.presto.plugin.phoenix.PhoenixErrorCode.PHOENIX_ERROR;
 import static com.facebook.presto.plugin.phoenix.PhoenixErrorCode.PHOENIX_NON_TRANSIENT_ERROR;
+import static com.facebook.presto.plugin.phoenix.TypeUtils.isArrayType;
 import static com.facebook.presto.spi.StandardErrorCode.NOT_SUPPORTED;
 import static com.facebook.presto.spi.type.BigintType.BIGINT;
 import static com.facebook.presto.spi.type.BooleanType.BOOLEAN;
@@ -169,7 +170,7 @@ public class PhoenixPageSink
             long millisUtc = type.getLong(block, position);
             return new Timestamp(millisUtc);
         }
-        else if (Types.isArrayType(type)) {
+        else if (isArrayType(type)) {
             Type elementType = type.getTypeParameters().get(0);
 
             Block arrayBlock = block.getObject(position, Block.class);

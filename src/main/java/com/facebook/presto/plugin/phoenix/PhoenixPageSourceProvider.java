@@ -14,40 +14,35 @@
 package com.facebook.presto.plugin.phoenix;
 
 import com.facebook.presto.spi.ColumnHandle;
+import com.facebook.presto.spi.ConnectorPageSource;
 import com.facebook.presto.spi.ConnectorSession;
 import com.facebook.presto.spi.ConnectorSplit;
-import com.facebook.presto.spi.RecordSet;
-import com.facebook.presto.spi.connector.ConnectorRecordSetProvider;
+import com.facebook.presto.spi.connector.ConnectorPageSourceProvider;
 import com.facebook.presto.spi.connector.ConnectorTransactionHandle;
-import com.google.common.collect.ImmutableList;
 
 import javax.inject.Inject;
 
 import java.util.List;
+import java.util.stream.Collectors;
 
 import static java.util.Objects.requireNonNull;
 
-public class PhoenixRecordSetProvider
-        implements ConnectorRecordSetProvider
+public class PhoenixPageSourceProvider
+        implements ConnectorPageSourceProvider
 {
     private final PhoenixClient phoenixClient;
 
     @Inject
-    public PhoenixRecordSetProvider(PhoenixClient phoenixClient)
+    public PhoenixPageSourceProvider(PhoenixClient phoenixClient)
     {
         this.phoenixClient = requireNonNull(phoenixClient, "phoenixClient is null");
     }
 
     @Override
-    public RecordSet getRecordSet(ConnectorTransactionHandle transactionHandle, ConnectorSession session, ConnectorSplit split, List<? extends ColumnHandle> columns)
+    public ConnectorPageSource createPageSource(ConnectorTransactionHandle transactionHandle, ConnectorSession session, ConnectorSplit split, List<ColumnHandle> columns)
     {
-        PhoenixSplit phoenixSplit = (PhoenixSplit) split;
-
-        ImmutableList.Builder<PhoenixColumnHandle> handles = ImmutableList.builder();
-        for (ColumnHandle handle : columns) {
-            handles.add((PhoenixColumnHandle) handle);
-        }
-
-        return new PhoenixRecordSet(phoenixClient, phoenixSplit, handles.build());
+        return new PhoenixPageSource(phoenixClient,
+                (PhoenixSplit) split,
+                columns.stream().map(column -> (PhoenixColumnHandle) column).collect(Collectors.toList()));
     }
 }

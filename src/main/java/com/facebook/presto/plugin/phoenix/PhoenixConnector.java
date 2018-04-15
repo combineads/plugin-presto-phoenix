@@ -16,7 +16,7 @@ package com.facebook.presto.plugin.phoenix;
 import com.facebook.presto.spi.connector.Connector;
 import com.facebook.presto.spi.connector.ConnectorMetadata;
 import com.facebook.presto.spi.connector.ConnectorPageSinkProvider;
-import com.facebook.presto.spi.connector.ConnectorRecordSetProvider;
+import com.facebook.presto.spi.connector.ConnectorPageSourceProvider;
 import com.facebook.presto.spi.connector.ConnectorSplitManager;
 import com.facebook.presto.spi.connector.ConnectorTransactionHandle;
 import com.facebook.presto.spi.session.PropertyMetadata;
@@ -41,29 +41,29 @@ public class PhoenixConnector
     private static final Logger log = Logger.get(PhoenixConnector.class);
 
     private final LifeCycleManager lifeCycleManager;
-    private final PhoenixMetadataFactory phoenixMetadataFactory;
-    private final PhoenixSplitManager phoenixSplitManager;
-    private final PhoenixRecordSetProvider phoenixRecordSetProvider;
-    private final PhoenixPageSinkProvider phoenixPageSinkProvider;
-    private final PhoenixTableProperties phoenixTableProperties;
+    private final PhoenixMetadataFactory metadataFactory;
+    private final PhoenixSplitManager splitManager;
+    private final PhoenixPageSourceProvider pageSourceProvider;
+    private final PhoenixPageSinkProvider pageSinkProvider;
+    private final PhoenixTableProperties tableProperties;
 
     private final ConcurrentMap<ConnectorTransactionHandle, PhoenixMetadata> transactions = new ConcurrentHashMap<>();
 
     @Inject
     public PhoenixConnector(
             LifeCycleManager lifeCycleManager,
-            PhoenixMetadataFactory phoenixMetadataFactory,
-            PhoenixSplitManager phoenixSplitManager,
-            PhoenixRecordSetProvider phoenixRecordSetProvider,
-            PhoenixPageSinkProvider phoenixPageSinkProvider,
-            PhoenixTableProperties phoenixTableProperties)
+            PhoenixMetadataFactory metadataFactory,
+            PhoenixSplitManager splitManager,
+            PhoenixPageSourceProvider pageSourceProvider,
+            PhoenixPageSinkProvider pageSinkProvider,
+            PhoenixTableProperties tableProperties)
     {
         this.lifeCycleManager = requireNonNull(lifeCycleManager, "lifeCycleManager is null");
-        this.phoenixMetadataFactory = requireNonNull(phoenixMetadataFactory, "phoenixMetadataFactory is null");
-        this.phoenixSplitManager = requireNonNull(phoenixSplitManager, "phoenixSplitManager is null");
-        this.phoenixRecordSetProvider = requireNonNull(phoenixRecordSetProvider, "phoenixRecordSetProvider is null");
-        this.phoenixPageSinkProvider = requireNonNull(phoenixPageSinkProvider, "phoenixPageSinkProvider is null");
-        this.phoenixTableProperties = requireNonNull(phoenixTableProperties, "phoenixTableProperties is null");
+        this.metadataFactory = requireNonNull(metadataFactory, "metadataFactory is null");
+        this.splitManager = requireNonNull(splitManager, "splitManager is null");
+        this.pageSourceProvider = requireNonNull(pageSourceProvider, "pageSourceProvider is null");
+        this.pageSinkProvider = requireNonNull(pageSinkProvider, "pageSinkProvider is null");
+        this.tableProperties = requireNonNull(tableProperties, "tableProperties is null");
     }
 
     @Override
@@ -77,7 +77,7 @@ public class PhoenixConnector
     {
         checkConnectorSupports(READ_COMMITTED, isolationLevel);
         PhoenixTransactionHandle transaction = new PhoenixTransactionHandle();
-        transactions.put(transaction, phoenixMetadataFactory.create());
+        transactions.put(transaction, metadataFactory.create());
         return transaction;
     }
 
@@ -106,25 +106,25 @@ public class PhoenixConnector
     @Override
     public ConnectorSplitManager getSplitManager()
     {
-        return phoenixSplitManager;
+        return splitManager;
     }
 
     @Override
-    public ConnectorRecordSetProvider getRecordSetProvider()
+    public ConnectorPageSourceProvider getPageSourceProvider()
     {
-        return phoenixRecordSetProvider;
+        return pageSourceProvider;
     }
 
     @Override
     public ConnectorPageSinkProvider getPageSinkProvider()
     {
-        return phoenixPageSinkProvider;
+        return pageSinkProvider;
     }
 
     @Override
     public List<PropertyMetadata<?>> getTableProperties()
     {
-        return phoenixTableProperties.getTableProperties();
+        return tableProperties.getTableProperties();
     }
 
     @Override
