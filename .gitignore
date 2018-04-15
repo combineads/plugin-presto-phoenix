@@ -1,5 +1,7 @@
 /target
-/.classpath
-/.project
-/.settings/
 /test-output/
+/.settings/
+
+.classpath
+.project
+.checkstyle
