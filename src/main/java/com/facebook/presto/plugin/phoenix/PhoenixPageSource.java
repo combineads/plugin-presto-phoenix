@@ -23,25 +23,14 @@ import com.facebook.presto.spi.type.DecimalType;
 import com.facebook.presto.spi.type.RealType;
 import com.facebook.presto.spi.type.StandardTypes;
 import com.facebook.presto.spi.type.Type;
-import io.airlift.log.Logger;
 import io.airlift.slice.Slice;
-import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.hbase.HBaseConfiguration;
-import org.apache.hadoop.io.NullWritable;
-import org.apache.hadoop.mapreduce.InputSplit;
-import org.apache.hadoop.mapreduce.RecordReader;
-import org.apache.hadoop.mapreduce.TaskAttemptID;
-import org.apache.hadoop.mapreduce.lib.db.DBWritable;
-import org.apache.hadoop.mapreduce.task.TaskAttemptContextImpl;
+import org.apache.phoenix.compile.QueryPlan;
 import org.apache.phoenix.jdbc.PhoenixConnection;
 import org.apache.phoenix.jdbc.PhoenixResultSet;
-import org.apache.phoenix.mapreduce.PhoenixInputFormat;
 import org.apache.phoenix.mapreduce.PhoenixInputSplit;
-import org.apache.phoenix.mapreduce.util.PhoenixConfigurationUtil;
 import org.apache.phoenix.schema.tuple.ResultTuple;
 import org.joda.time.chrono.ISOChronology;
 
-import java.lang.reflect.Field;
 import java.math.BigDecimal;
 import java.sql.Array;
 import java.sql.Connection;
@@ -51,9 +40,9 @@ import java.util.Arrays;
 import java.util.Date;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
-import java.util.stream.Collectors;
 
-import static com.facebook.presto.plugin.phoenix.PhoenixClient.buildInputSplit;
+import static com.facebook.presto.plugin.phoenix.PhoenixClient.getInputSplit;
+import static com.facebook.presto.plugin.phoenix.PhoenixClient.getQueryPlan;
 import static com.facebook.presto.plugin.phoenix.TypeUtils.isArrayType;
 import static com.facebook.presto.spi.StandardErrorCode.GENERIC_INTERNAL_ERROR;
 import static com.facebook.presto.spi.type.BigintType.BIGINT;
@@ -78,8 +67,6 @@ import static org.joda.time.DateTimeZone.UTC;
 public class PhoenixPageSource
         implements ConnectorPageSource
 {
-    private static final Logger log = Logger.get(PhoenixPageSource.class);
-
     private static final ISOChronology UTC_CHRONOLOGY = ISOChronology.getInstanceUTC();
     private static final int ROWS_PER_REQUEST = 4096;
 
@@ -112,21 +99,10 @@ public class PhoenixPageSource
                     split.getTupleDomain(),
                     columns);
 
-            List<InputSplit> splits = buildInputSplit(connection, inputQuery)
-                    .stream().filter(inputSplit -> inputSplit.equals(split.getPhoenixInputSplit())).collect(Collectors.toList());
+            QueryPlan queryPlan = getQueryPlan(connection, inputQuery);
+            PhoenixInputSplit newSplit = getInputSplit(queryPlan, split.getPhoenixInputSplit());
 
-            PhoenixInputSplit phoenixInputSplit = (PhoenixInputSplit) splits.get(0);
-
-            Configuration configuration = HBaseConfiguration.create(connection.getQueryServices().getConfiguration());
-            PhoenixConfigurationUtil.setInputQuery(configuration, inputQuery);
-            RecordReader<NullWritable, DBWritable> reader = new PhoenixInputFormat<>().createRecordReader(phoenixInputSplit, new TaskAttemptContextImpl(configuration, new TaskAttemptID()));
-            reader.initialize(phoenixInputSplit, null);
-
-            Field field = reader.getClass().getDeclaredField("resultSet");
-            field.setAccessible(true);
-            resultSet = (PhoenixResultSet) field.get(reader);
-
-            log.debug("scan data: %s, bytes: %d in %s", phoenixInputSplit.getKeyRange(), phoenixInputSplit.getLength(), phoenixInputSplit.getLocations()[0]);
+            resultSet = new PhoenixRecordReader(queryPlan).getResultSet(newSplit);
         }
         catch (Exception e) {
             throw handleSqlException(e);

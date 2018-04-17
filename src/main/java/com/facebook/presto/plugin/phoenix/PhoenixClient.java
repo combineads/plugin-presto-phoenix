@@ -31,20 +31,19 @@ import com.google.common.base.Joiner;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
+import com.google.common.collect.Lists;
 import io.airlift.log.Logger;
-import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.hbase.HBaseConfiguration;
 import org.apache.hadoop.hbase.HColumnDescriptor;
 import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.HTableDescriptor;
 import org.apache.hadoop.hbase.client.HBaseAdmin;
-import org.apache.hadoop.mapreduce.InputSplit;
-import org.apache.hadoop.mapreduce.Job;
+import org.apache.hadoop.hbase.client.Scan;
+import org.apache.phoenix.compile.QueryPlan;
+import org.apache.phoenix.iterate.MapReduceParallelScanGrouper;
 import org.apache.phoenix.jdbc.PhoenixConnection;
 import org.apache.phoenix.jdbc.PhoenixDriver;
-import org.apache.phoenix.mapreduce.PhoenixInputFormat;
+import org.apache.phoenix.jdbc.PhoenixStatement;
 import org.apache.phoenix.mapreduce.PhoenixInputSplit;
-import org.apache.phoenix.mapreduce.util.PhoenixConfigurationUtil;
 import org.apache.phoenix.query.QueryConstants;
 import org.apache.phoenix.schema.AmbiguousColumnException;
 import org.apache.phoenix.schema.ColumnNotFoundException;
@@ -66,6 +65,7 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.sql.Types;
 import java.util.ArrayList;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
@@ -100,7 +100,6 @@ import static java.util.Collections.nCopies;
 import static java.util.Locale.ENGLISH;
 import static java.util.Objects.requireNonNull;
 import static org.apache.hadoop.hbase.HConstants.FOREVER;
-import static org.apache.phoenix.mapreduce.util.PhoenixConfigurationUtil.MAPREDUCE_SPLIT_BY_STATS;
 import static org.apache.phoenix.util.PhoenixRuntime.getTable;
 
 public class PhoenixClient
@@ -253,7 +252,7 @@ public class PhoenixClient
                     layoutHandle.getTupleDomain(),
                     getColumns(handle));
 
-            List<InputSplit> splits = buildInputSplit(connection, inputQuery);
+            List<PhoenixInputSplit> splits = buildInputSplit(connection, inputQuery);
 
             return new FixedSplitSource(splits.stream().map(split -> (PhoenixInputSplit) split).map(split -> {
                 return new PhoenixSplit(
@@ -293,13 +292,47 @@ public class PhoenixClient
                 tupleDomain);
     }
 
-    public static List<InputSplit> buildInputSplit(PhoenixConnection connection, String inputQuery)
+    public static List<PhoenixInputSplit> buildInputSplit(PhoenixConnection connection, String inputQuery)
             throws SQLException, IOException, InterruptedException
     {
-        Configuration conf = HBaseConfiguration.create(connection.getQueryServices().getConfiguration());
-        conf.setBoolean(MAPREDUCE_SPLIT_BY_STATS, false);
-        PhoenixConfigurationUtil.setInputQuery(conf, inputQuery);
-        return new PhoenixInputFormat<>().getSplits(Job.getInstance(conf));
+        requireNonNull(inputQuery, "inputQuery is null");
+        final QueryPlan queryPlan = getQueryPlan(connection, inputQuery);
+
+        final List<PhoenixInputSplit> psplits = new LinkedList<>();
+
+        for (List<Scan> scans : queryPlan.getScans()) {
+            for (Scan aScan : scans) {
+                psplits.add(new PhoenixInputSplit(Lists.newArrayList(aScan), 0L, ""));
+            }
+        }
+        return psplits;
+    }
+
+    public static QueryPlan getQueryPlan(PhoenixConnection connection, String inputQuery)
+    {
+        requireNonNull(inputQuery, "inputQuery is null");
+        try (Statement statement = connection.createStatement()) {
+            final PhoenixStatement phoenixStmt = statement.unwrap(PhoenixStatement.class);
+            final QueryPlan queryPlan = phoenixStmt.optimizeQuery(inputQuery);
+            queryPlan.iterator(MapReduceParallelScanGrouper.getInstance());
+            return queryPlan;
+        }
+        catch (Exception e) {
+            throw new PrestoException(PHOENIX_ERROR, String.format("Failed to get the query plan with error [%s]", e.getMessage()), e);
+        }
+    }
+
+    public static PhoenixInputSplit getInputSplit(QueryPlan queryPlan, PhoenixInputSplit split)
+    {
+        for (List<Scan> scans : queryPlan.getScans()) {
+            for (Scan aScan : scans) {
+                PhoenixInputSplit planPhoenixInputSplit = new PhoenixInputSplit(Lists.newArrayList(aScan), 0L, "");
+                if (planPhoenixInputSplit.equals(split)) {
+                    return planPhoenixInputSplit;
+                }
+            }
+        }
+        return null;
     }
 
     @SuppressWarnings("deprecation")
@@ -446,7 +479,9 @@ public class PhoenixClient
                 connection.getCatalog(),
                 escapeNamePattern(schemaName, escape),
                 escapeNamePattern(tableName, escape),
-                new String[] {"TABLE", "VIEW"});
+                new String[] {
+                        "TABLE", "VIEW"
+                });
     }
 
     protected SchemaTableName getSchemaTableName(ResultSet resultSet)

@@ -43,6 +43,12 @@ public class TestPhoenixIntegrationSmokeTest
     }
 
     @Test
+    public void testMultipleSomeColumnsRangesPredicate()
+    {
+        assertQuery("SELECT orderkey, shippriority, clerk, totalprice, custkey  FROM ORDERS WHERE orderkey BETWEEN 10 AND 50 or orderkey BETWEEN 100 AND 150");
+    }
+
+    @Test
     public void testCreateTableWithProperties()
     {
         assertUpdate("CREATE TABLE test_create_table_as_if_not_exists (created_date timestamp, a bigint, b double, c varchar(10), d varchar(10)) with(rowkeys = ARRAY['created_date row_timestamp','a', 'b', 'c'], SALT_BUCKETS=10)");
