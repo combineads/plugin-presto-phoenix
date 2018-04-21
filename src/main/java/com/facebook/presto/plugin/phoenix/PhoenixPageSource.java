@@ -44,7 +44,6 @@ import org.joda.time.chrono.ISOChronology;
 
 import java.math.BigDecimal;
 import java.sql.Array;
-import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.Arrays;
@@ -363,7 +362,7 @@ public class PhoenixPageSource
         closed = true;
 
         // use try with resources to close everything properly
-        try (Connection connection = this.connection;
+        try (PhoenixConnection connection = this.connection;
                 ResultSet resultSet = this.resultSet) {
             // do nothing
         }

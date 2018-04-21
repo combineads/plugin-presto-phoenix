@@ -36,12 +36,12 @@ import com.facebook.presto.spi.type.VarcharType;
 import com.google.common.base.Joiner;
 import com.google.common.collect.ImmutableList;
 import io.airlift.slice.Slice;
+import org.apache.phoenix.jdbc.PhoenixConnection;
 import org.apache.phoenix.jdbc.PhoenixPreparedStatement;
 import org.joda.time.DateTimeZone;
 
 import java.math.BigDecimal;
 import java.math.BigInteger;
-import java.sql.Connection;
 import java.sql.Date;
 import java.sql.SQLException;
 import java.sql.Time;
@@ -92,7 +92,7 @@ public class QueryBuilder
     {
     }
 
-    public String buildSql(Connection connection, String catalog, String schema, String table, List<PhoenixColumnHandle> columns, TupleDomain<ColumnHandle> tupleDomain)
+    public String buildSql(PhoenixConnection connection, String catalog, String schema, String table, List<PhoenixColumnHandle> columns, TupleDomain<ColumnHandle> tupleDomain)
             throws SQLException
     {
         StringBuilder sql = new StringBuilder();

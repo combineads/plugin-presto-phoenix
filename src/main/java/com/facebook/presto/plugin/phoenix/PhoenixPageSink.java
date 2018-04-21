@@ -27,7 +27,6 @@ import org.apache.phoenix.jdbc.PhoenixConnection;
 import org.joda.time.DateTimeZone;
 
 import java.sql.Array;
-import java.sql.Connection;
 import java.sql.Date;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
@@ -193,7 +192,7 @@ public class PhoenixPageSink
     public CompletableFuture<Collection<Slice>> finish()
     {
         // commit and close
-        try (Connection connection = this.connection;
+        try (PhoenixConnection connection = this.connection;
                 PreparedStatement statement = this.statement) {
             if (batchSize > 0) {
                 statement.executeBatch();
@@ -214,7 +213,7 @@ public class PhoenixPageSink
     public void abort()
     {
         // rollback and close
-        try (Connection connection = this.connection;
+        try (PhoenixConnection connection = this.connection;
                 PreparedStatement statement = this.statement) {
             connection.rollback();
         }

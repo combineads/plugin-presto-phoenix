@@ -56,7 +56,6 @@ import javax.annotation.Nullable;
 import javax.inject.Inject;
 
 import java.io.IOException;
-import java.sql.Connection;
 import java.sql.DatabaseMetaData;
 import java.sql.Driver;
 import java.sql.ResultSet;
@@ -447,7 +446,7 @@ public class PhoenixClient
                 .toString();
     }
 
-    protected ResultSet getTables(Connection connection, String schemaName, String tableName)
+    protected ResultSet getTables(PhoenixConnection connection, String schemaName, String tableName)
             throws SQLException
     {
         DatabaseMetaData metadata = connection.getMetaData();
@@ -469,7 +468,7 @@ public class PhoenixClient
                 resultSet.getString("TABLE_NAME").toLowerCase(ENGLISH));
     }
 
-    protected void execute(Connection connection, String query)
+    protected void execute(PhoenixConnection connection, String query)
             throws SQLException
     {
         try (Statement statement = connection.createStatement()) {
