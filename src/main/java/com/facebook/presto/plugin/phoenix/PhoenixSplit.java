@@ -20,13 +20,10 @@ import com.facebook.presto.spi.predicate.TupleDomain;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.common.collect.ImmutableList;
-import org.apache.hadoop.io.DataInputBuffer;
-import org.apache.hadoop.io.DataOutputBuffer;
-import org.apache.phoenix.mapreduce.PhoenixInputSplit;
+import org.apache.phoenix.query.KeyRange;
 
 import javax.annotation.Nullable;
 
-import java.io.IOException;
 import java.util.Base64;
 import java.util.List;
 
@@ -40,8 +37,8 @@ public class PhoenixSplit
     private final String schemaName;
     private final String tableName;
     private final TupleDomain<ColumnHandle> tupleDomain;
-    private String scans;
-    private PhoenixInputSplit phoenixSplit;
+    private final String startRow;
+    private final String stopRow;
 
     public PhoenixSplit(
             String connectorId,
@@ -49,22 +46,15 @@ public class PhoenixSplit
             String schemaName,
             String tableName,
             TupleDomain<ColumnHandle> tupleDomain,
-            PhoenixInputSplit phoenixSplit)
+            KeyRange split)
     {
         this.connectorId = requireNonNull(connectorId, "connector id is null");
         this.catalogName = catalogName;
         this.schemaName = schemaName;
         this.tableName = requireNonNull(tableName, "table name is null");
         this.tupleDomain = requireNonNull(tupleDomain, "tupleDomain is null");
-        this.phoenixSplit = phoenixSplit;
-
-        try {
-            DataOutputBuffer out = new DataOutputBuffer();
-            phoenixSplit.write(out);
-            this.scans = Base64.getEncoder().encodeToString(out.getData());
-        }
-        catch (IOException e) {
-        }
+        this.startRow = Base64.getEncoder().encodeToString(split.getLowerRange());
+        this.stopRow = Base64.getEncoder().encodeToString(split.getUpperRange());
     }
 
     @JsonCreator
@@ -74,26 +64,16 @@ public class PhoenixSplit
             @JsonProperty("schemaName") @Nullable String schemaName,
             @JsonProperty("tableName") String tableName,
             @JsonProperty("tupleDomain") TupleDomain<ColumnHandle> tupleDomain,
-            @JsonProperty("scans") String scans)
+            @JsonProperty("startRow") String startRow,
+            @JsonProperty("stopRow") String stopRow)
     {
         this.connectorId = requireNonNull(connectorId, "connector id is null");
         this.catalogName = catalogName;
         this.schemaName = schemaName;
         this.tableName = requireNonNull(tableName, "table name is null");
         this.tupleDomain = requireNonNull(tupleDomain, "tupleDomain is null");
-        this.scans = scans;
-
-        DataInputBuffer in = new DataInputBuffer();
-        byte[] byteData = Base64.getDecoder().decode(scans);
-        in.reset(byteData, byteData.length);
-
-        phoenixSplit = new PhoenixInputSplit();
-        try {
-            phoenixSplit.readFields(in);
-        }
-        catch (IOException e) {
-            phoenixSplit = null;
-        }
+        this.startRow = startRow;
+        this.stopRow = stopRow;
     }
 
     @JsonProperty
@@ -129,14 +109,22 @@ public class PhoenixSplit
     }
 
     @JsonProperty
-    public String getScans()
+    public String getStartRow()
     {
-        return scans;
+        return startRow;
     }
 
-    public PhoenixInputSplit getPhoenixInputSplit()
+    @JsonProperty
+    public String getStopRow()
     {
-        return phoenixSplit;
+        return stopRow;
+    }
+
+    public KeyRange getKeyRange()
+    {
+        byte[] byteStartRow = Base64.getDecoder().decode(startRow);
+        byte[] byteStopRow = Base64.getDecoder().decode(stopRow);
+        return KeyRange.getKeyRange(byteStartRow, byteStopRow);
     }
 
     @Override
@@ -148,13 +136,7 @@ public class PhoenixSplit
     @Override
     public List<HostAddress> getAddresses()
     {
-        try {
-            String[] locations = phoenixSplit.getLocations();
-            return ImmutableList.of(HostAddress.fromString(locations[0]));
-        }
-        catch (Exception e) {
-            return ImmutableList.of();
-        }
+        return ImmutableList.of();
     }
 
     @Override

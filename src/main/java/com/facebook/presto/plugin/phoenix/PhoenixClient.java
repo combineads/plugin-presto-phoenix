@@ -31,7 +31,6 @@ import com.google.common.base.Joiner;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
-import com.google.common.collect.Lists;
 import io.airlift.log.Logger;
 import org.apache.hadoop.hbase.HColumnDescriptor;
 import org.apache.hadoop.hbase.HConstants;
@@ -43,7 +42,7 @@ import org.apache.phoenix.iterate.MapReduceParallelScanGrouper;
 import org.apache.phoenix.jdbc.PhoenixConnection;
 import org.apache.phoenix.jdbc.PhoenixDriver;
 import org.apache.phoenix.jdbc.PhoenixStatement;
-import org.apache.phoenix.mapreduce.PhoenixInputSplit;
+import org.apache.phoenix.query.KeyRange;
 import org.apache.phoenix.query.QueryConstants;
 import org.apache.phoenix.schema.AmbiguousColumnException;
 import org.apache.phoenix.schema.ColumnNotFoundException;
@@ -252,9 +251,16 @@ public class PhoenixClient
                     layoutHandle.getTupleDomain(),
                     getColumns(handle));
 
-            List<PhoenixInputSplit> splits = buildInputSplit(connection, inputQuery);
+            final QueryPlan queryPlan = getQueryPlan(connection, inputQuery);
+            final List<KeyRange> splits = new LinkedList<>();
 
-            return new FixedSplitSource(splits.stream().map(split -> (PhoenixInputSplit) split).map(split -> {
+            for (List<Scan> scans : queryPlan.getScans()) {
+                for (Scan scan : scans) {
+                    splits.add(KeyRange.getKeyRange(scan.getStartRow(), scan.getStopRow()));
+                }
+            }
+
+            return new FixedSplitSource(splits.stream().map(split -> (KeyRange) split).map(split -> {
                 return new PhoenixSplit(
                         connectorId,
                         handle.getCatalogName(),
@@ -292,22 +298,6 @@ public class PhoenixClient
                 tupleDomain);
     }
 
-    public static List<PhoenixInputSplit> buildInputSplit(PhoenixConnection connection, String inputQuery)
-            throws SQLException, IOException, InterruptedException
-    {
-        requireNonNull(inputQuery, "inputQuery is null");
-        final QueryPlan queryPlan = getQueryPlan(connection, inputQuery);
-
-        final List<PhoenixInputSplit> psplits = new LinkedList<>();
-
-        for (List<Scan> scans : queryPlan.getScans()) {
-            for (Scan aScan : scans) {
-                psplits.add(new PhoenixInputSplit(Lists.newArrayList(aScan), 0L, ""));
-            }
-        }
-        return psplits;
-    }
-
     public static QueryPlan getQueryPlan(PhoenixConnection connection, String inputQuery)
     {
         requireNonNull(inputQuery, "inputQuery is null");
@@ -320,19 +310,6 @@ public class PhoenixClient
         catch (Exception e) {
             throw new PrestoException(PHOENIX_ERROR, String.format("Failed to get the query plan with error [%s]", e.getMessage()), e);
         }
-    }
-
-    public static PhoenixInputSplit getInputSplit(QueryPlan queryPlan, PhoenixInputSplit split)
-    {
-        for (List<Scan> scans : queryPlan.getScans()) {
-            for (Scan aScan : scans) {
-                PhoenixInputSplit planPhoenixInputSplit = new PhoenixInputSplit(Lists.newArrayList(aScan), 0L, "");
-                if (planPhoenixInputSplit.equals(split)) {
-                    return planPhoenixInputSplit;
-                }
-            }
-        }
-        return null;
     }
 
     @SuppressWarnings("deprecation")
