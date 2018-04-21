@@ -140,7 +140,7 @@ public class PhoenixClient
 
     public Set<String> getSchemaNames()
     {
-        try (Connection connection = getConnection();
+        try (PhoenixConnection connection = getConnection();
                 ResultSet resultSet = connection.getMetaData().getSchemas()) {
             ImmutableSet.Builder<String> schemaNames = ImmutableSet.builder();
             while (resultSet.next()) {
@@ -159,7 +159,7 @@ public class PhoenixClient
 
     public List<SchemaTableName> getTableNames(@Nullable String schema)
     {
-        try (Connection connection = getConnection()) {
+        try (PhoenixConnection connection = getConnection()) {
             DatabaseMetaData metadata = connection.getMetaData();
             if (metadata.storesUpperCaseIdentifiers() && (schema != null)) {
                 schema = schema.toUpperCase(ENGLISH);
@@ -180,7 +180,7 @@ public class PhoenixClient
     @Nullable
     public PhoenixTableHandle getTableHandle(SchemaTableName schemaTableName)
     {
-        try (Connection connection = getConnection()) {
+        try (PhoenixConnection connection = getConnection()) {
             DatabaseMetaData metadata = connection.getMetaData();
             String schemaName = schemaTableName.getSchemaName();
             String tableName = schemaTableName.getTableName();
@@ -214,7 +214,7 @@ public class PhoenixClient
 
     public List<PhoenixColumnHandle> getColumns(PhoenixTableHandle tableHandle)
     {
-        try (Connection connection = getConnection()) {
+        try (PhoenixConnection connection = getConnection()) {
             try (ResultSet resultSet = getColumns(tableHandle, connection.getMetaData())) {
                 List<PhoenixColumnHandle> columns = new ArrayList<>();
                 boolean found = false;
@@ -351,7 +351,7 @@ public class PhoenixClient
             throw new PrestoException(NOT_FOUND, "Schema not found: " + schema);
         }
 
-        try (Connection connection = getConnection()) {
+        try (PhoenixConnection connection = getConnection()) {
             boolean uppercase = connection.getMetaData().storesUpperCaseIdentifiers();
             if (uppercase) {
                 schema = schema.toUpperCase(ENGLISH);
@@ -442,7 +442,7 @@ public class PhoenixClient
                 .append("DROP TABLE ")
                 .append(getFullTableName(handle.getCatalogName(), handle.getSchemaName(), handle.getTableName()));
 
-        try (Connection connection = getConnection()) {
+        try (PhoenixConnection connection = getConnection()) {
             execute(connection, sql.toString());
         }
         catch (SQLException e) {

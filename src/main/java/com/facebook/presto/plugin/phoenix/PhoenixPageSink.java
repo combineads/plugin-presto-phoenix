@@ -23,6 +23,7 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.primitives.Shorts;
 import com.google.common.primitives.SignedBytes;
 import io.airlift.slice.Slice;
+import org.apache.phoenix.jdbc.PhoenixConnection;
 import org.joda.time.DateTimeZone;
 
 import java.sql.Array;
@@ -63,7 +64,7 @@ import static org.joda.time.chrono.ISOChronology.getInstanceUTC;
 public class PhoenixPageSink
         implements ConnectorPageSink
 {
-    private final Connection connection;
+    private final PhoenixConnection connection;
     private final PreparedStatement statement;
 
     private final List<Type> columnTypes;
