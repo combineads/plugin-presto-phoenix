@@ -58,7 +58,6 @@ import static com.facebook.presto.spi.type.VarbinaryType.VARBINARY;
 import static com.facebook.presto.spi.type.Varchars.isVarcharType;
 import static java.lang.Float.intBitsToFloat;
 import static java.lang.Math.toIntExact;
-import static java.util.Locale.ENGLISH;
 import static java.util.concurrent.CompletableFuture.completedFuture;
 import static java.util.concurrent.TimeUnit.DAYS;
 import static org.joda.time.chrono.ISOChronology.getInstanceUTC;
@@ -77,9 +76,7 @@ public class PhoenixPageSink
     public PhoenixPageSink(PhoenixOutputTableHandle handle, ConnectorSession session, PhoenixClient phoenixClient)
     {
         columnTypes = handle.getColumnTypes();
-
-        columnNames = handle.getColumnNames()
-                .stream().map(value -> value.toLowerCase(ENGLISH)).collect(Collectors.toList());
+        columnNames = handle.getColumnNames();
         List<String> duplicateKeyUpdateColumns = PhoenixSessionProperties.getDuplicateKeyUpdateColumns(session);
 
         dupKeyColumns = columnNames.stream().filter(column -> duplicateKeyUpdateColumns.contains(column)).collect(Collectors.toList());
@@ -125,7 +122,7 @@ public class PhoenixPageSink
                     }
                 }
                 for (int i = 0; i < dupKeyValues.length; i++) {
-                    int parameter = channel + i;
+                    int parameter = channel + i + 1;
                     statement.setObject(parameter, dupKeyValues[i]);
                 }
 

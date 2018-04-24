@@ -69,7 +69,7 @@ public class TestPhoenixIntegrationSmokeTest
     @Test
     public void tesdtDuplicateKeyUpdateColumns()
     {
-        assertUpdate("CREATE TABLE test_dup_columns AS SELECT 'key' as rid, 100 AS col1, 200 AS col2, 300 AS col3 ", 1);
+        assertUpdate("CREATE TABLE test_dup_columns AS SELECT 'key' as RID, 100 AS COL1, 200 AS COL2, 300 AS COL3 ", 1);
         assertQuery("SELECT col1 FROM test_dup_columns where rid = 'key'", "SELECT 100");
         assertQuery("SELECT col2 FROM test_dup_columns where rid = 'key'", "SELECT 200");
         assertQuery("SELECT col3 FROM test_dup_columns where rid = 'key'", "SELECT 300");
@@ -86,7 +86,7 @@ public class TestPhoenixIntegrationSmokeTest
 
         assertUpdate(session, "INSERT INTO test_dup_columns VALUES('key', 10000, 20000, 30000)", 1);
         assertQuery(session, "SELECT col1 FROM test_dup_columns where rid = 'key'", "SELECT 11000");
-        assertQuery(session, "SELECT col2 FROM test_dup_columns where rid = 'key'", "SELECT 20000");
+        assertQuery(session, "SELECT col2 FROM test_dup_columns where rid = 'key'", "SELECT 2000");
         assertQuery(session, "SELECT col3 FROM test_dup_columns where rid = 'key'", "SELECT 33000");
 
         session = testSessionBuilder()
