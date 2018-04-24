@@ -45,6 +45,7 @@ public class PhoenixConnector
     private final PhoenixSplitManager splitManager;
     private final PhoenixPageSourceProvider pageSourceProvider;
     private final PhoenixPageSinkProvider pageSinkProvider;
+    private final PhoenixSessionProperties sessionProperties;
     private final PhoenixTableProperties tableProperties;
 
     private final ConcurrentMap<ConnectorTransactionHandle, PhoenixMetadata> transactions = new ConcurrentHashMap<>();
@@ -56,6 +57,7 @@ public class PhoenixConnector
             PhoenixSplitManager splitManager,
             PhoenixPageSourceProvider pageSourceProvider,
             PhoenixPageSinkProvider pageSinkProvider,
+            PhoenixSessionProperties sessionProperties,
             PhoenixTableProperties tableProperties)
     {
         this.lifeCycleManager = requireNonNull(lifeCycleManager, "lifeCycleManager is null");
@@ -63,6 +65,7 @@ public class PhoenixConnector
         this.splitManager = requireNonNull(splitManager, "splitManager is null");
         this.pageSourceProvider = requireNonNull(pageSourceProvider, "pageSourceProvider is null");
         this.pageSinkProvider = requireNonNull(pageSinkProvider, "pageSinkProvider is null");
+        this.sessionProperties = requireNonNull(sessionProperties, "sessionProperties is null");
         this.tableProperties = requireNonNull(tableProperties, "tableProperties is null");
     }
 
@@ -119,6 +122,12 @@ public class PhoenixConnector
     public ConnectorPageSinkProvider getPageSinkProvider()
     {
         return pageSinkProvider;
+    }
+
+    @Override
+    public List<PropertyMetadata<?>> getSessionProperties()
+    {
+        return sessionProperties.getSessionProperties();
     }
 
     @Override

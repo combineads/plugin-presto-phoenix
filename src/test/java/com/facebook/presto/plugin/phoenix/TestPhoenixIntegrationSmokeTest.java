@@ -13,6 +13,7 @@
  */
 package com.facebook.presto.plugin.phoenix;
 
+import com.facebook.presto.Session;
 import com.facebook.presto.testing.MaterializedResult;
 import com.facebook.presto.testing.MaterializedRow;
 import com.facebook.presto.tests.AbstractTestIntegrationSmokeTest;
@@ -25,6 +26,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 
+import static com.facebook.presto.testing.TestingSession.testSessionBuilder;
 import static io.airlift.tpch.TpchTable.ORDERS;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.testng.Assert.assertEquals;
@@ -62,6 +64,38 @@ public class TestPhoenixIntegrationSmokeTest
         assertUpdate("CREATE TABLE test_create_presplits_table_as_if_not_exists (rid varchar(10), val1 varchar(10)) with(rowkeys = ARRAY['rid'], SPLIT_ON='\"1\",\"2\",\"3\"')");
         assertTrue(getQueryRunner().tableExists(getSession(), "test_create_presplits_table_as_if_not_exists"));
         assertTableColumnNames("test_create_presplits_table_as_if_not_exists", "rid", "val1");
+    }
+
+    @Test
+    public void tesdtDuplicateKeyUpdateColumns()
+    {
+        assertUpdate("CREATE TABLE test_dup_columns AS SELECT 'key' as rid, 100 AS col1, 200 AS col2, 300 AS col3 ", 1);
+        assertQuery("SELECT col1 FROM test_dup_columns where rid = 'key'", "SELECT 100");
+        assertQuery("SELECT col2 FROM test_dup_columns where rid = 'key'", "SELECT 200");
+        assertQuery("SELECT col3 FROM test_dup_columns where rid = 'key'", "SELECT 300");
+
+        assertUpdate("INSERT INTO test_dup_columns VALUES('key', 1000, 2000, 3000)", 1);
+        assertQuery("SELECT col1 FROM test_dup_columns where rid = 'key'", "SELECT 1000");
+        assertQuery("SELECT col2 FROM test_dup_columns where rid = 'key'", "SELECT 2000");
+        assertQuery("SELECT col3 FROM test_dup_columns where rid = 'key'", "SELECT 3000");
+
+        Session session = testSessionBuilder()
+                .setCatalog(getSession().getCatalog().get())
+                .setSchema(getSession().getSchema().get())
+                .setCatalogSessionProperty("phoenix", "duplicate_key_update_columns", "col1 and col3").build();
+
+        assertUpdate(session, "INSERT INTO test_dup_columns VALUES('key', 10000, 20000, 30000)", 1);
+        assertQuery(session, "SELECT col1 FROM test_dup_columns where rid = 'key'", "SELECT 11000");
+        assertQuery(session, "SELECT col2 FROM test_dup_columns where rid = 'key'", "SELECT 20000");
+        assertQuery(session, "SELECT col3 FROM test_dup_columns where rid = 'key'", "SELECT 33000");
+
+        session = testSessionBuilder()
+                .setCatalog(getSession().getCatalog().get())
+                .setSchema(getSession().getSchema().get()).build();
+        assertUpdate(session, "INSERT INTO test_dup_columns VALUES('key', 1000, 2000, 3000)", 1);
+        assertQuery(session, "SELECT col1 FROM test_dup_columns where rid = 'key'", "SELECT 1000");
+        assertQuery(session, "SELECT col2 FROM test_dup_columns where rid = 'key'", "SELECT 2000");
+        assertQuery(session, "SELECT col3 FROM test_dup_columns where rid = 'key'", "SELECT 3000");
     }
 
     @Test

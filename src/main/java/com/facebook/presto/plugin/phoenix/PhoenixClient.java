@@ -437,14 +437,23 @@ public class PhoenixClient
                 handle.getTableName()));
     }
 
-    public String buildInsertSql(PhoenixOutputTableHandle handle)
+    public String buildInsertSql(PhoenixOutputTableHandle handle, List<String> dupKeyColumns)
     {
+        dupKeyColumns = requireNonNull(dupKeyColumns, "dupKeyColumns is null");
+
         String vars = Joiner.on(',').join(nCopies(handle.getColumnNames().size(), "?"));
-        return new StringBuilder()
+        // ON DUPLICATE KEY UPDATE counter1 = counter1 + 1, counter2 = counter2 + 1;
+        StringBuilder sql = new StringBuilder()
                 .append("UPSERT INTO ")
                 .append(getFullTableName(handle.getCatalogName(), handle.getSchemaName(), handle.getTableName()))
-                .append(" VALUES (").append(vars).append(")")
-                .toString();
+                .append(" VALUES (").append(vars).append(")");
+
+        if (!dupKeyColumns.isEmpty()) {
+            sql.append(" ON DUPLICATE KEY UPDATE ");
+            sql.append(dupKeyColumns.stream().map(column -> column + " = " + column + " + ?").collect(Collectors.joining(",")));
+        }
+
+        return sql.toString();
     }
 
     protected ResultSet getTables(PhoenixConnection connection, String schemaName, String tableName)

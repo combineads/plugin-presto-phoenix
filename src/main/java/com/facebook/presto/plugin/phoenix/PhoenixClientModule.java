@@ -49,6 +49,7 @@ public class PhoenixClientModule
         binder.bind(PhoenixClient.class).in(Scopes.SINGLETON);
         binder.bind(PhoenixMetadataFactory.class).in(Scopes.SINGLETON);
 
+        binder.bind(PhoenixSessionProperties.class).in(Scopes.SINGLETON);
         binder.bind(PhoenixTableProperties.class).in(Scopes.SINGLETON);
         binder.bind(PhoenixConnector.class).in(Scopes.SINGLETON);
         binder.bind(TypeManager.class).toInstance(typeManager);

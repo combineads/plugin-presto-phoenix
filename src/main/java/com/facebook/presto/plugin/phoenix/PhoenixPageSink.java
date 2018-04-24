@@ -14,6 +14,7 @@
 package com.facebook.presto.plugin.phoenix;
 
 import com.facebook.presto.spi.ConnectorPageSink;
+import com.facebook.presto.spi.ConnectorSession;
 import com.facebook.presto.spi.Page;
 import com.facebook.presto.spi.PrestoException;
 import com.facebook.presto.spi.block.Block;
@@ -35,6 +36,7 @@ import java.sql.Timestamp;
 import java.util.Collection;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.stream.Collectors;
 
 import static com.facebook.presto.plugin.phoenix.PhoenixClient.toSqlType;
 import static com.facebook.presto.plugin.phoenix.PhoenixErrorCode.PHOENIX_ERROR;
@@ -56,6 +58,7 @@ import static com.facebook.presto.spi.type.VarbinaryType.VARBINARY;
 import static com.facebook.presto.spi.type.Varchars.isVarcharType;
 import static java.lang.Float.intBitsToFloat;
 import static java.lang.Math.toIntExact;
+import static java.util.Locale.ENGLISH;
 import static java.util.concurrent.CompletableFuture.completedFuture;
 import static java.util.concurrent.TimeUnit.DAYS;
 import static org.joda.time.chrono.ISOChronology.getInstanceUTC;
@@ -66,11 +69,21 @@ public class PhoenixPageSink
     private final PhoenixConnection connection;
     private final PreparedStatement statement;
 
+    private final List<String> columnNames;
     private final List<Type> columnTypes;
+    private final List<String> dupKeyColumns;
     private int batchSize;
 
-    public PhoenixPageSink(PhoenixOutputTableHandle handle, PhoenixClient phoenixClient)
+    public PhoenixPageSink(PhoenixOutputTableHandle handle, ConnectorSession session, PhoenixClient phoenixClient)
     {
+        columnTypes = handle.getColumnTypes();
+
+        columnNames = handle.getColumnNames()
+                .stream().map(value -> value.toLowerCase(ENGLISH)).collect(Collectors.toList());
+        List<String> duplicateKeyUpdateColumns = PhoenixSessionProperties.getDuplicateKeyUpdateColumns(session);
+
+        dupKeyColumns = columnNames.stream().filter(column -> duplicateKeyUpdateColumns.contains(column)).collect(Collectors.toList());
+
         try {
             connection = phoenixClient.getConnection();
             connection.setAutoCommit(false);
@@ -80,13 +93,11 @@ public class PhoenixPageSink
         }
 
         try {
-            statement = connection.prepareStatement(phoenixClient.buildInsertSql(handle));
+            statement = connection.prepareStatement(phoenixClient.buildInsertSql(handle, dupKeyColumns));
         }
         catch (SQLException e) {
             throw new PrestoException(PHOENIX_ERROR, e);
         }
-
-        columnTypes = handle.getColumnTypes();
     }
 
     @Override
@@ -94,7 +105,9 @@ public class PhoenixPageSink
     {
         try {
             for (int position = 0; position < page.getPositionCount(); position++) {
-                for (int channel = 0; channel < page.getChannelCount(); channel++) {
+                Object[] dupKeyValues = new Object[dupKeyColumns.size()];
+                int channel = 0;
+                for (; channel < page.getChannelCount(); channel++) {
                     Block block = page.getBlock(channel);
                     int parameter = channel + 1;
                     Type type = columnTypes.get(channel);
@@ -104,7 +117,16 @@ public class PhoenixPageSink
                     }
                     else {
                         statement.setObject(parameter, value);
+
+                        int dupKeyPos = dupKeyColumns.indexOf(columnNames.get(channel));
+                        if (dupKeyPos > -1) {
+                            dupKeyValues[dupKeyPos] = value;
+                        }
                     }
+                }
+                for (int i = 0; i < dupKeyValues.length; i++) {
+                    int parameter = channel + i;
+                    statement.setObject(parameter, dupKeyValues[i]);
                 }
 
                 statement.addBatch();

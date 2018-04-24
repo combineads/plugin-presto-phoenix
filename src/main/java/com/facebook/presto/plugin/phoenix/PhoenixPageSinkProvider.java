@@ -38,12 +38,12 @@ public class PhoenixPageSinkProvider
     @Override
     public ConnectorPageSink createPageSink(ConnectorTransactionHandle transactionHandle, ConnectorSession session, ConnectorOutputTableHandle outputTableHandle)
     {
-        return new PhoenixPageSink((PhoenixOutputTableHandle) outputTableHandle, phoenixClient);
+        return new PhoenixPageSink((PhoenixOutputTableHandle) outputTableHandle, session, phoenixClient);
     }
 
     @Override
     public ConnectorPageSink createPageSink(ConnectorTransactionHandle transactionHandle, ConnectorSession session, ConnectorInsertTableHandle insertTableHandle)
     {
-        return new PhoenixPageSink((PhoenixOutputTableHandle) insertTableHandle, phoenixClient);
+        return new PhoenixPageSink((PhoenixOutputTableHandle) insertTableHandle, session, phoenixClient);
     }
 }
