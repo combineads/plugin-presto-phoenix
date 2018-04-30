@@ -215,12 +215,12 @@
 				<configuration>
 					<ignoredDependencies>
 						<dependency>
-							<groupId>com.facebook.presto</groupId>
-							<artifactId>phoenix-core-shaded</artifactId>
+							<groupId>com.github.combineads</groupId>
+							<artifactId>presto-phoenix-core-shaded</artifactId>
 						</dependency>
 						<dependency>
-							<groupId>com.facebook.presto</groupId>
-							<artifactId>hbase-testing-util-shaded</artifactId>
+							<groupId>com.github.combineads</groupId>
+							<artifactId>presto-hbase-testing-util-shaded</artifactId>
 						</dependency>
 					</ignoredDependencies>
 				</configuration>
