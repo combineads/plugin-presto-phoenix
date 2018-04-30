@@ -427,6 +427,36 @@ public class PhoenixClient
         }
     }
 
+    public void addColumn(PhoenixTableHandle handle, ColumnMetadata column)
+    {
+        StringBuilder sql = new StringBuilder()
+                .append("ALTER TABLE ")
+                .append(getFullTableName(handle.getCatalogName(), handle.getSchemaName(), handle.getTableName()))
+                .append(" ADD ").append(column.getName()).append(" ").append(toSqlType(column.getType(), false));
+
+        try (PhoenixConnection connection = getConnection()) {
+            execute(connection, sql.toString());
+        }
+        catch (SQLException e) {
+            throw new PrestoException(PHOENIX_ERROR, e);
+        }
+    }
+
+    public void dropColumn(PhoenixTableHandle handle, PhoenixColumnHandle columnHandle)
+    {
+        StringBuilder sql = new StringBuilder()
+                .append("ALTER TABLE ")
+                .append(getFullTableName(handle.getCatalogName(), handle.getSchemaName(), handle.getTableName()))
+                .append(" DROP COLUMN ").append(columnHandle.getColumnName());
+
+        try (PhoenixConnection connection = getConnection()) {
+            execute(connection, sql.toString());
+        }
+        catch (SQLException e) {
+            throw new PrestoException(PHOENIX_ERROR, e);
+        }
+    }
+
     public void rollbackCreateTable(PhoenixOutputTableHandle handle)
     {
         dropTable(new PhoenixTableHandle(

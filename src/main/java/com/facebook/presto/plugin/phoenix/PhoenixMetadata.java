@@ -214,12 +214,17 @@ public class PhoenixMetadata
     @Override
     public void addColumn(ConnectorSession session, ConnectorTableHandle tableHandle, ColumnMetadata column)
     {
+        PhoenixTableHandle handle = (PhoenixTableHandle) tableHandle;
+        phoenixClient.addColumn(handle, column);
         throw new PrestoException(NOT_SUPPORTED, "This connector does not support adding columns");
     }
 
     @Override
     public void dropColumn(ConnectorSession session, ConnectorTableHandle tableHandle, ColumnHandle column)
     {
-        throw new PrestoException(NOT_SUPPORTED, "This connector does not support dropping columns");
+        PhoenixTableHandle handle = (PhoenixTableHandle) tableHandle;
+        PhoenixColumnHandle columnHandle = (PhoenixColumnHandle) column;
+        phoenixClient.dropColumn(handle, columnHandle);
+        throw new PrestoException(NOT_SUPPORTED, "This connector does not support adding columns");
     }
 }
