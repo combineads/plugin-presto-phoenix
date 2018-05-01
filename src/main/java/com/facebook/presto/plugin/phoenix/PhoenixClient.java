@@ -18,6 +18,7 @@ import com.facebook.presto.spi.ColumnMetadata;
 import com.facebook.presto.spi.ConnectorSplitSource;
 import com.facebook.presto.spi.ConnectorTableMetadata;
 import com.facebook.presto.spi.FixedSplitSource;
+import com.facebook.presto.spi.HostAddress;
 import com.facebook.presto.spi.PrestoException;
 import com.facebook.presto.spi.SchemaTableName;
 import com.facebook.presto.spi.TableNotFoundException;
@@ -34,6 +35,7 @@ import com.google.common.collect.ImmutableSet;
 import io.airlift.log.Logger;
 import org.apache.hadoop.hbase.HColumnDescriptor;
 import org.apache.hadoop.hbase.HConstants;
+import org.apache.hadoop.hbase.HRegionLocation;
 import org.apache.hadoop.hbase.HTableDescriptor;
 import org.apache.hadoop.hbase.client.HBaseAdmin;
 import org.apache.hadoop.hbase.client.Scan;
@@ -63,6 +65,7 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.sql.Types;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
@@ -124,6 +127,8 @@ public class PhoenixClient
     protected final Driver driver = new PhoenixDriver();
     protected final String connectionUrl;
     protected final Properties connectionProperties;
+
+    private final Map<String, HostAddress> hostCache = new HashMap<>();
 
     @Inject
     public PhoenixClient(PhoenixConnectorId connectorId, PhoenixConfig config) throws SQLException
@@ -259,14 +264,31 @@ public class PhoenixClient
                 }
             }
 
+            byte[] tableName = queryPlan.getTableRef().getTable().getPhysicalName().getBytes();
             return new FixedSplitSource(splits.stream().map(split -> (KeyRange) split).map(split -> {
+                List<HostAddress> addresses;
+                try {
+                    HRegionLocation location = connection.getQueryServices().getTableRegionLocation(tableName, split.getLowerRange());
+                    String hostName = location.getHostname();
+                    HostAddress address = hostCache.get(hostName);
+                    if (address == null) {
+                        address = HostAddress.fromString(hostName);
+                        hostCache.put(hostName, address);
+                    }
+                    addresses = ImmutableList.of(address);
+                }
+                catch (SQLException e) {
+                    addresses = ImmutableList.of();
+                }
+
                 return new PhoenixSplit(
                         connectorId,
                         handle.getCatalogName(),
                         handle.getSchemaName(),
                         handle.getTableName(),
                         layoutHandle.getTupleDomain(),
-                        split);
+                        split,
+                        addresses);
             }).collect(Collectors.toList()));
         }
         catch (IOException | InterruptedException | SQLException e) {
@@ -642,8 +664,7 @@ public class PhoenixClient
     {
         ImmutableMap.Builder<String, Object> properties = ImmutableMap.builder();
 
-        try (PhoenixConnection pconn = getConnection();
-                HBaseAdmin admin = pconn.getQueryServices().getAdmin()) {
+        try (PhoenixConnection pconn = getConnection(); HBaseAdmin admin = pconn.getQueryServices().getAdmin()) {
             PTable table = getTable(pconn, getFullTableName(handle.getCatalogName(), handle.getSchemaName(), handle.getTableName()));
 
             List<PColumn> pkColumns = table.getPKColumns();
