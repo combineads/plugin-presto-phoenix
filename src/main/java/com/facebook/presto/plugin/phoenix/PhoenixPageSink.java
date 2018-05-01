@@ -199,8 +199,12 @@ public class PhoenixPageSink
                 Object element = getObjectValue(elementType, arrayBlock, i);
                 elements[i] = element;
             }
-
-            return connection.createArrayOf(toSqlType(elementType, true), elements);
+            String sqlType = toSqlType(elementType);
+            int boundedPos = sqlType.indexOf('(');
+            if (boundedPos > -1) {
+                sqlType = sqlType.substring(0, boundedPos).trim();
+            }
+            return connection.createArrayOf(sqlType, elements);
         }
         else {
             throw new PrestoException(NOT_SUPPORTED, "Unsupported column type: " + type.getDisplayName());

@@ -375,14 +375,14 @@ public class PhoenixClient
                 String typeStatement;
 
                 if (rowkeys.size() == 0) {
-                    typeStatement = toSqlType(column.getType(), false) + " not null";
+                    typeStatement = toSqlType(column.getType()) + " not null";
                     rowkeys.add(columnName);
                 }
                 else if (pkColumns.stream().anyMatch(columnName::equalsIgnoreCase)) {
-                    typeStatement = toSqlType(column.getType(), false) + " not null";
+                    typeStatement = toSqlType(column.getType()) + " not null";
                 }
                 else {
-                    typeStatement = toSqlType(column.getType(), false);
+                    typeStatement = toSqlType(column.getType());
                 }
                 columnList.add(new StringBuilder()
                         .append(columnName)
@@ -454,7 +454,7 @@ public class PhoenixClient
         StringBuilder sql = new StringBuilder()
                 .append("ALTER TABLE ")
                 .append(getFullTableName(handle.getCatalogName(), handle.getSchemaName(), handle.getTableName()))
-                .append(" ADD ").append(column.getName()).append(" ").append(toSqlType(column.getType(), false));
+                .append(" ADD ").append(column.getName()).append(" ").append(toSqlType(column.getType()));
 
         try (PhoenixConnection connection = getConnection()) {
             execute(connection, sql.toString());
@@ -539,127 +539,6 @@ public class PhoenixClient
         }
     }
 
-    protected Type toPrestoType(int phoenixType, int columnSize, int decimalDigits, int arraySize, int rawTypeId)
-    {
-        switch (phoenixType) {
-            case Types.BIT:
-            case Types.BOOLEAN:
-                return BOOLEAN;
-            case Types.TINYINT:
-                return TINYINT;
-            case Types.SMALLINT:
-                return SMALLINT;
-            case Types.INTEGER:
-                return INTEGER;
-            case Types.BIGINT:
-                return BIGINT;
-            case Types.REAL:
-                return REAL;
-            case Types.FLOAT:
-            case Types.DOUBLE:
-            case Types.NUMERIC:
-                return DOUBLE;
-            case Types.DECIMAL:
-                return DecimalType.createDecimalType(columnSize, decimalDigits);
-            case Types.CHAR:
-            case Types.NCHAR:
-                return createCharType(min(columnSize, CharType.MAX_LENGTH));
-            case Types.VARCHAR:
-            case Types.NVARCHAR:
-            case Types.LONGVARCHAR:
-            case Types.LONGNVARCHAR:
-                if (columnSize == 0 || columnSize > VarcharType.MAX_LENGTH) {
-                    return createUnboundedVarcharType();
-                }
-                return createVarcharType(columnSize);
-            case Types.BINARY:
-            case Types.VARBINARY:
-            case Types.LONGVARBINARY:
-                return VARBINARY;
-            case Types.DATE:
-                return DATE;
-            case Types.TIME:
-                return TIME;
-            case Types.TIMESTAMP:
-                return TIMESTAMP;
-            case Types.ARRAY:
-                PDataType<?> baseType = PDataType.fromTypeId(rawTypeId - PDataType.ARRAY_TYPE_BASE);
-                Type basePrestoType = toPrestoType(baseType.getSqlType(), columnSize, decimalDigits, arraySize, rawTypeId);
-                return new ArrayType(basePrestoType);
-        }
-        return null;
-    }
-
-    protected static String toSqlType(Type type, boolean needUnbounded)
-    {
-        if (type instanceof VarcharType) {
-            if (needUnbounded || ((VarcharType) type).isUnbounded()) {
-                return "VARCHAR";
-            }
-            return "VARCHAR(" + ((VarcharType) type).getLengthSafe() + ")";
-        }
-        if (type instanceof CharType) {
-            if (needUnbounded || ((CharType) type).getLength() == CharType.MAX_LENGTH) {
-                return "CHAR";
-            }
-            return "CHAR(" + ((CharType) type).getLength() + ")";
-        }
-
-        String sqlType = SQL_TYPES.get(type);
-        if (sqlType != null) {
-            return sqlType;
-        }
-
-        if (type instanceof DecimalType) {
-            return type.toString().toUpperCase();
-        }
-
-        if (isArrayType(type)) {
-            Type elementType = type.getTypeParameters().get(0);
-            sqlType = toSqlType(elementType, true);
-            return sqlType + " ARRAY[]";
-        }
-
-        throw new PrestoException(NOT_SUPPORTED, "Unsupported column type: " + type.getTypeSignature());
-    }
-
-    protected static String getFullTableName(String catalog, String schema, String table)
-    {
-        StringBuilder sb = new StringBuilder();
-        if (!isNullOrEmpty(catalog)) {
-            sb.append(catalog).append(".");
-        }
-        if (!isNullOrEmpty(schema)) {
-            sb.append(schema).append(".");
-        }
-        sb.append(table);
-        return sb.toString();
-    }
-
-    protected static String escapeNamePattern(String name, String escape)
-    {
-        if ((name == null) || (escape == null)) {
-            return name;
-        }
-        checkArgument(!escape.equals("_"), "Escape string must not be '_'");
-        checkArgument(!escape.equals("%"), "Escape string must not be '%'");
-        name = name.replace(escape, escape + escape);
-        name = name.replace("_", escape + "_");
-        name = name.replace("%", escape + "%");
-        return name;
-    }
-
-    private static ResultSet getColumns(PhoenixTableHandle tableHandle, DatabaseMetaData metadata)
-            throws SQLException
-    {
-        String escape = metadata.getSearchStringEscape();
-        return metadata.getColumns(
-                tableHandle.getCatalogName(),
-                escapeNamePattern(tableHandle.getSchemaName(), escape),
-                escapeNamePattern(tableHandle.getTableName(), escape),
-                null);
-    }
-
     public Map<String, Object> getTableProperties(PhoenixTableHandle handle)
     {
         ImmutableMap.Builder<String, Object> properties = ImmutableMap.builder();
@@ -735,5 +614,126 @@ public class PhoenixClient
             throw new PrestoException(PHOENIX_ERROR, e);
         }
         return properties.build();
+    }
+
+    protected static String toSqlType(Type type)
+    {
+        if (type instanceof VarcharType) {
+            if (((VarcharType) type).isUnbounded()) {
+                return "VARCHAR";
+            }
+            return "VARCHAR(" + ((VarcharType) type).getLengthSafe() + ")";
+        }
+        if (type instanceof CharType) {
+            if (((CharType) type).getLength() == CharType.MAX_LENGTH) {
+                return "CHAR";
+            }
+            return "CHAR(" + ((CharType) type).getLength() + ")";
+        }
+
+        String sqlType = SQL_TYPES.get(type);
+        if (sqlType != null) {
+            return sqlType;
+        }
+
+        if (type instanceof DecimalType) {
+            return type.toString().toUpperCase();
+        }
+
+        if (isArrayType(type)) {
+            Type elementType = type.getTypeParameters().get(0);
+            sqlType = toSqlType(elementType);
+            return sqlType + " ARRAY[]";
+        }
+
+        throw new PrestoException(NOT_SUPPORTED, "Unsupported column type: " + type.getTypeSignature());
+    }
+
+    protected static Type toPrestoType(int phoenixType, int columnSize, int decimalDigits, int arraySize, int rawTypeId)
+    {
+        switch (phoenixType) {
+            case Types.BIT:
+            case Types.BOOLEAN:
+                return BOOLEAN;
+            case Types.TINYINT:
+                return TINYINT;
+            case Types.SMALLINT:
+                return SMALLINT;
+            case Types.INTEGER:
+                return INTEGER;
+            case Types.BIGINT:
+                return BIGINT;
+            case Types.REAL:
+                return REAL;
+            case Types.FLOAT:
+            case Types.DOUBLE:
+            case Types.NUMERIC:
+                return DOUBLE;
+            case Types.DECIMAL:
+                return DecimalType.createDecimalType(columnSize, decimalDigits);
+            case Types.CHAR:
+            case Types.NCHAR:
+                return createCharType(min(columnSize, CharType.MAX_LENGTH));
+            case Types.VARCHAR:
+            case Types.NVARCHAR:
+            case Types.LONGVARCHAR:
+            case Types.LONGNVARCHAR:
+                if (columnSize == 0 || columnSize > VarcharType.MAX_LENGTH) {
+                    return createUnboundedVarcharType();
+                }
+                return createVarcharType(columnSize);
+            case Types.BINARY:
+            case Types.VARBINARY:
+            case Types.LONGVARBINARY:
+                return VARBINARY;
+            case Types.DATE:
+                return DATE;
+            case Types.TIME:
+                return TIME;
+            case Types.TIMESTAMP:
+                return TIMESTAMP;
+            case Types.ARRAY:
+                PDataType<?> baseType = PDataType.fromTypeId(rawTypeId - PDataType.ARRAY_TYPE_BASE);
+                Type basePrestoType = toPrestoType(baseType.getSqlType(), columnSize, decimalDigits, arraySize, rawTypeId);
+                return new ArrayType(basePrestoType);
+        }
+        return null;
+    }
+
+    private static String getFullTableName(String catalog, String schema, String table)
+    {
+        StringBuilder sb = new StringBuilder();
+        if (!isNullOrEmpty(catalog)) {
+            sb.append(catalog).append(".");
+        }
+        if (!isNullOrEmpty(schema)) {
+            sb.append(schema).append(".");
+        }
+        sb.append(table);
+        return sb.toString();
+    }
+
+    private static String escapeNamePattern(String name, String escape)
+    {
+        if ((name == null) || (escape == null)) {
+            return name;
+        }
+        checkArgument(!escape.equals("_"), "Escape string must not be '_'");
+        checkArgument(!escape.equals("%"), "Escape string must not be '%'");
+        name = name.replace(escape, escape + escape);
+        name = name.replace("_", escape + "_");
+        name = name.replace("%", escape + "%");
+        return name;
+    }
+
+    private static ResultSet getColumns(PhoenixTableHandle tableHandle, DatabaseMetaData metadata)
+            throws SQLException
+    {
+        String escape = metadata.getSearchStringEscape();
+        return metadata.getColumns(
+                tableHandle.getCatalogName(),
+                escapeNamePattern(tableHandle.getSchemaName(), escape),
+                escapeNamePattern(tableHandle.getTableName(), escape),
+                null);
     }
 }
