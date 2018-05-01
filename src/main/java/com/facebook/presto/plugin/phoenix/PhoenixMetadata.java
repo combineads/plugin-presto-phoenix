@@ -42,7 +42,6 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 
-import static com.facebook.presto.spi.StandardErrorCode.NOT_SUPPORTED;
 import static com.facebook.presto.spi.StandardErrorCode.PERMISSION_DENIED;
 import static com.google.common.base.Preconditions.checkState;
 import static java.util.Objects.requireNonNull;
@@ -216,7 +215,6 @@ public class PhoenixMetadata
     {
         PhoenixTableHandle handle = (PhoenixTableHandle) tableHandle;
         phoenixClient.addColumn(handle, column);
-        throw new PrestoException(NOT_SUPPORTED, "This connector does not support adding columns");
     }
 
     @Override
@@ -225,6 +223,5 @@ public class PhoenixMetadata
         PhoenixTableHandle handle = (PhoenixTableHandle) tableHandle;
         PhoenixColumnHandle columnHandle = (PhoenixColumnHandle) column;
         phoenixClient.dropColumn(handle, columnHandle);
-        throw new PrestoException(NOT_SUPPORTED, "This connector does not support adding columns");
     }
 }
