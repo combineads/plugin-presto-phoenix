@@ -19,7 +19,7 @@ import com.facebook.presto.spi.HostAddress;
 import com.facebook.presto.spi.predicate.TupleDomain;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
 import org.apache.phoenix.query.KeyRange;
 
 import javax.annotation.Nullable;
@@ -27,6 +27,7 @@ import javax.annotation.Nullable;
 import java.util.Base64;
 import java.util.List;
 
+import static com.google.common.base.MoreObjects.toStringHelper;
 import static java.util.Objects.requireNonNull;
 
 public class PhoenixSplit
@@ -39,6 +40,7 @@ public class PhoenixSplit
     private final TupleDomain<ColumnHandle> tupleDomain;
     private final String startRow;
     private final String stopRow;
+    private final List<HostAddress> addresses;
 
     public PhoenixSplit(
             String connectorId,
@@ -46,7 +48,8 @@ public class PhoenixSplit
             String schemaName,
             String tableName,
             TupleDomain<ColumnHandle> tupleDomain,
-            KeyRange split)
+            KeyRange split,
+            List<HostAddress> addresses)
     {
         this.connectorId = requireNonNull(connectorId, "connector id is null");
         this.catalogName = catalogName;
@@ -55,6 +58,7 @@ public class PhoenixSplit
         this.tupleDomain = requireNonNull(tupleDomain, "tupleDomain is null");
         this.startRow = Base64.getEncoder().encodeToString(split.getLowerRange());
         this.stopRow = Base64.getEncoder().encodeToString(split.getUpperRange());
+        this.addresses = addresses;
     }
 
     @JsonCreator
@@ -65,7 +69,8 @@ public class PhoenixSplit
             @JsonProperty("tableName") String tableName,
             @JsonProperty("tupleDomain") TupleDomain<ColumnHandle> tupleDomain,
             @JsonProperty("startRow") String startRow,
-            @JsonProperty("stopRow") String stopRow)
+            @JsonProperty("stopRow") String stopRow,
+            @JsonProperty("addresses") List<HostAddress> addresses)
     {
         this.connectorId = requireNonNull(connectorId, "connector id is null");
         this.catalogName = catalogName;
@@ -74,6 +79,7 @@ public class PhoenixSplit
         this.tupleDomain = requireNonNull(tupleDomain, "tupleDomain is null");
         this.startRow = startRow;
         this.stopRow = stopRow;
+        this.addresses = addresses;
     }
 
     @JsonProperty
@@ -120,6 +126,13 @@ public class PhoenixSplit
         return stopRow;
     }
 
+    @JsonProperty
+    @Override
+    public List<HostAddress> getAddresses()
+    {
+        return addresses;
+    }
+
     public KeyRange getKeyRange()
     {
         byte[] byteStartRow = Base64.getDecoder().decode(startRow);
@@ -134,14 +147,25 @@ public class PhoenixSplit
     }
 
     @Override
-    public List<HostAddress> getAddresses()
+    public Object getInfo()
     {
-        return ImmutableList.of();
+        return ImmutableMap.builder()
+                .put("hosts", addresses)
+                .put("schema", schemaName)
+                .put("table", tableName)
+                .put("startRow", startRow)
+                .put("stopRow", stopRow)
+                .build();
     }
 
     @Override
-    public Object getInfo()
+    public String toString()
     {
-        return this;
+        return toStringHelper(this)
+                .addValue(schemaName)
+                .addValue(tableName)
+                .addValue(startRow)
+                .addValue(stopRow)
+                .toString();
     }
 }
