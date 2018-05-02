@@ -77,12 +77,14 @@ public class PhoenixPageSink
     private final List<Type> columnTypes;
     private final List<String> dupKeyColumns;
     private int batchSize;
+    private boolean hasRowkey;
 
     public PhoenixPageSink(PhoenixOutputTableHandle handle, ConnectorSession session, PhoenixClient phoenixClient)
     {
         columnTypes = handle.getColumnTypes();
         columnNames = handle.getColumnNames();
 
+        hasRowkey = ROWKEY.equalsIgnoreCase(columnNames.get(0));
         List<String> duplicateKeyUpdateColumns = PhoenixSessionProperties.getDuplicateKeyUpdateColumns(session);
 
         dupKeyColumns = columnNames.stream().filter(column -> duplicateKeyUpdateColumns.contains(column)).collect(Collectors.toList());
@@ -126,23 +128,24 @@ public class PhoenixPageSink
     @Override
     public CompletableFuture<?> appendPage(Page page)
     {
+        int rowkeyParameter = 0;
+        if (hasRowkey) {
+            rowkeyParameter++;
+        }
         try {
             for (int position = 0; position < page.getPositionCount(); position++) {
+                if (hasRowkey) {
+                    statement.setString(1, UUID.randomUUID().toString());
+                }
                 Object[] dupKeyValues = new Object[dupKeyColumns.size()];
                 int channel = 0;
                 for (; channel < page.getChannelCount(); channel++) {
                     Block block = page.getBlock(channel);
-                    int parameter = channel + 1;
-                    Type type = columnTypes.get(channel);
-                    String columnName = columnNames.get(channel);
+                    int columnPos = channel + rowkeyParameter;
+                    int parameter = columnPos + 1;
+                    Type type = columnTypes.get(columnPos);
 
-                    Object value;
-                    if (ROWKEY.equals(columnName)) {
-                        value = UUID.randomUUID().toString();
-                    }
-                    else {
-                        value = getObjectValue(type, block, position);
-                    }
+                    Object value = getObjectValue(type, block, position);
 
                     if (value instanceof Array) {
                         statement.setArray(parameter, (Array) value);
@@ -150,14 +153,14 @@ public class PhoenixPageSink
                     else {
                         statement.setObject(parameter, value);
 
-                        int dupKeyPos = dupKeyColumns.indexOf(columnName);
+                        int dupKeyPos = dupKeyColumns.indexOf(columnNames.get(columnPos));
                         if (dupKeyPos > -1) {
                             dupKeyValues[dupKeyPos] = value;
                         }
                     }
                 }
                 for (int i = 0; i < dupKeyValues.length; i++) {
-                    int parameter = channel + i + 1;
+                    int parameter = channel + i + rowkeyParameter + 1;
                     statement.setObject(parameter, dupKeyValues[i]);
                 }
 

@@ -69,7 +69,7 @@ public class TestPhoenixIntegrationSmokeTest
     @Test
     public void tesdtDuplicateKeyUpdateColumns()
     {
-        assertUpdate("CREATE TABLE test_dup_columns AS SELECT 'key' as RID, 100 AS COL1, 200 AS COL2, 300 AS COL3 ", 1);
+        assertUpdate("CREATE TABLE test_dup_columns WITH (ROWKEYS = ARRAY['RID']) AS SELECT 'key' as RID, 100 AS COL1, 200 AS COL2, 300 AS COL3 ", 1);
         assertQuery("SELECT col1 FROM test_dup_columns where rid = 'key'", "SELECT 100");
         assertQuery("SELECT col2 FROM test_dup_columns where rid = 'key'", "SELECT 200");
         assertQuery("SELECT col3 FROM test_dup_columns where rid = 'key'", "SELECT 300");

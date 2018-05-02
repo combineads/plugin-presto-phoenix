@@ -89,10 +89,15 @@ public class PhoenixMetadata
     @Override
     public ConnectorTableMetadata getTableMetadata(ConnectorSession session, ConnectorTableHandle table)
     {
+        return getTableMetadata(session, table, false);
+    }
+
+    public ConnectorTableMetadata getTableMetadata(ConnectorSession session, ConnectorTableHandle table, boolean requiredRowkey)
+    {
         PhoenixTableHandle handle = (PhoenixTableHandle) table;
 
         ImmutableList.Builder<ColumnMetadata> columnMetadata = ImmutableList.builder();
-        for (PhoenixColumnHandle column : phoenixClient.getColumns(handle)) {
+        for (PhoenixColumnHandle column : phoenixClient.getColumns(handle, requiredRowkey)) {
             columnMetadata.add(column.getColumnMetadata());
         }
         return new ConnectorTableMetadata(handle.getSchemaTableName(), columnMetadata.build(), ((PhoenixClient) phoenixClient).getTableProperties(handle));
@@ -110,7 +115,7 @@ public class PhoenixMetadata
         PhoenixTableHandle phoenixTableHandle = (PhoenixTableHandle) tableHandle;
 
         ImmutableMap.Builder<String, ColumnHandle> columnHandles = ImmutableMap.builder();
-        for (PhoenixColumnHandle column : phoenixClient.getColumns(phoenixTableHandle)) {
+        for (PhoenixColumnHandle column : phoenixClient.getColumns(phoenixTableHandle, false)) {
             columnHandles.put(column.getColumnMetadata().getName(), column);
         }
         return columnHandles.build();
@@ -201,7 +206,7 @@ public class PhoenixMetadata
     @Override
     public ConnectorInsertTableHandle beginInsert(ConnectorSession session, ConnectorTableHandle tableHandle)
     {
-        return phoenixClient.beginInsertTable(getTableMetadata(session, tableHandle));
+        return phoenixClient.beginInsertTable(getTableMetadata(session, tableHandle, true));
     }
 
     @Override

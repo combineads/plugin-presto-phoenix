@@ -215,7 +215,7 @@ public class PhoenixClient
         }
     }
 
-    public List<PhoenixColumnHandle> getColumns(PhoenixTableHandle tableHandle)
+    public List<PhoenixColumnHandle> getColumns(PhoenixTableHandle tableHandle, boolean reqiuredRowKey)
     {
         try (PhoenixConnection connection = getConnection()) {
             try (ResultSet resultSet = getColumns(tableHandle, connection.getMetaData())) {
@@ -227,7 +227,9 @@ public class PhoenixClient
                     // skip unsupported column types
                     if (columnType != null) {
                         String columnName = resultSet.getString("COLUMN_NAME");
-                        columns.add(new PhoenixColumnHandle(connectorId, columnName, columnType));
+                        if (reqiuredRowKey || !ROWKEY.equals(columnName)) {
+                            columns.add(new PhoenixColumnHandle(connectorId, columnName, columnType));
+                        }
                     }
                 }
                 if (!found) {
@@ -253,7 +255,7 @@ public class PhoenixClient
                     handle.getSchemaName(),
                     handle.getTableName(),
                     layoutHandle.getTupleDomain(),
-                    getColumns(handle));
+                    getColumns(handle, false));
 
             final QueryPlan queryPlan = getQueryPlan(connection, inputQuery);
             final List<KeyRange> splits = new LinkedList<>();
