@@ -17,7 +17,6 @@ import com.facebook.presto.spi.ConnectorPageSource;
 import com.facebook.presto.spi.Page;
 import com.facebook.presto.spi.PageBuilder;
 import com.facebook.presto.spi.PrestoException;
-import com.facebook.presto.spi.block.Block;
 import com.facebook.presto.spi.block.BlockBuilder;
 import com.facebook.presto.spi.type.DecimalType;
 import com.facebook.presto.spi.type.RealType;
@@ -204,7 +203,13 @@ public class PhoenixPageSource
                     pageBuilder.declarePosition();
                     for (int column = 0; column < columnTypes.size(); column++) {
                         BlockBuilder output = pageBuilder.getBlockBuilder(column);
-                        appendTo(columnTypes.get(column), resultSet.getObject(columnNames.get(column)), output);
+                        Type columnType = columnTypes.get(column);
+                        if (isArrayType(columnType)) {
+                            writeArrayBlock(output, columnType, resultSet.getArray(columnNames.get(column)));
+                        }
+                        else {
+                            appendTo(columnType, resultSet.getObject(columnNames.get(column)), output);
+                        }
                     }
                 }
             }
@@ -272,9 +277,6 @@ public class PhoenixPageSource
             else if (javaType == Slice.class) {
                 writeSlice(output, type, value);
             }
-            else if (javaType == Block.class) {
-                writeBlock(output, type, value);
-            }
             else {
                 throw new PrestoException(GENERIC_INTERNAL_ERROR, "Unhandled type for " + javaType.getSimpleName() + ":" + type.getTypeSignature());
             }
@@ -307,30 +309,20 @@ public class PhoenixPageSource
         }
     }
 
-    private void writeBlock(BlockBuilder output, Type type, Object value)
+    private void writeArrayBlock(BlockBuilder output, Type type, Array value)
     {
-        if (isArrayType(type)) {
-            if (value instanceof Array) {
-                try {
-                    Object[] elements = createArrayFromArrayObject(((Array) value).getArray());
-                    BlockBuilder builder = output.beginBlockEntry();
+        try {
+            Object[] elements = createArrayFromArrayObject(value.getArray());
+            BlockBuilder builder = output.beginBlockEntry();
+            Type columnType = type.getTypeParameters().get(0);
+            Arrays.asList(elements).forEach(element -> appendTo(columnType, element, builder));
 
-                    Arrays.asList(elements).forEach(element -> appendTo(type.getTypeParameters().get(0), element, builder));
-
-                    output.closeEntry();
-                    return;
-                }
-                catch (SQLException | RuntimeException e) {
-                    throw handleSqlException(e);
-                }
-            }
+            output.closeEntry();
+            return;
         }
-        else {
-            throw new PrestoException(GENERIC_INTERNAL_ERROR, "Unhandled type for Block: " + type.getTypeSignature());
+        catch (SQLException | RuntimeException e) {
+            throw handleSqlException(e);
         }
-
-        // not a convertible value
-        output.appendNull();
     }
 
     private Object[] createArrayFromArrayObject(Object o)
