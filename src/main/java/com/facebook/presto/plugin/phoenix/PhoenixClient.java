@@ -91,13 +91,13 @@ import static com.facebook.presto.spi.type.TimestampType.TIMESTAMP;
 import static com.facebook.presto.spi.type.TimestampWithTimeZoneType.TIMESTAMP_WITH_TIME_ZONE;
 import static com.facebook.presto.spi.type.TinyintType.TINYINT;
 import static com.facebook.presto.spi.type.VarbinaryType.VARBINARY;
+import static com.facebook.presto.spi.type.VarcharType.VARCHAR;
 import static com.facebook.presto.spi.type.VarcharType.createUnboundedVarcharType;
 import static com.facebook.presto.spi.type.VarcharType.createVarcharType;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Strings.isNullOrEmpty;
 import static com.google.common.collect.Iterables.getOnlyElement;
 import static java.lang.Math.min;
-import static java.util.Collections.nCopies;
 import static java.util.Locale.ENGLISH;
 import static java.util.Objects.requireNonNull;
 import static org.apache.hadoop.hbase.HConstants.FOREVER;
@@ -105,8 +105,8 @@ import static org.apache.phoenix.util.PhoenixRuntime.getTable;
 
 public class PhoenixClient
 {
+    public static final String ROWKEY = "ROWKEY";
     private static final Logger log = Logger.get(PhoenixClient.class);
-
     private static final Map<Type, String> SQL_TYPES = ImmutableMap.<Type, String>builder()
             .put(BOOLEAN, "BOOLEAN")
             .put(BIGINT, "BIGINT")
@@ -337,6 +337,7 @@ public class PhoenixClient
     public PhoenixOutputTableHandle createTable(ConnectorTableMetadata tableMetadata)
     {
         SchemaTableName schemaTableName = tableMetadata.getTable();
+        LinkedList<ColumnMetadata> tableColumns = new LinkedList<>(tableMetadata.getColumns());
         String schema = schemaTableName.getSchemaName();
         String table = schemaTableName.getTableName();
 
@@ -347,6 +348,11 @@ public class PhoenixClient
 
         if (!getSchemaNames().contains(schema)) {
             throw new PrestoException(NOT_FOUND, "Schema not found: " + schema);
+        }
+
+        if (rowkeys.size() == 0) {
+            // Add the rowkey when rowkey is empty.
+            tableColumns.addFirst(new ColumnMetadata(ROWKEY, VARCHAR));
         }
 
         try (PhoenixConnection connection = getConnection()) {
@@ -365,7 +371,7 @@ public class PhoenixClient
             ImmutableList.Builder<Type> columnTypes = ImmutableList.builder();
             ImmutableList.Builder<String> columnList = ImmutableList.builder();
 
-            for (ColumnMetadata column : tableMetadata.getColumns()) {
+            for (ColumnMetadata column : tableColumns) {
                 String columnName = column.getName();
                 if (uppercase) {
                     columnName = columnName.toUpperCase(ENGLISH);
@@ -489,25 +495,6 @@ public class PhoenixClient
                 handle.getTableName()));
     }
 
-    public String buildInsertSql(PhoenixOutputTableHandle handle, List<String> dupKeyColumns)
-    {
-        dupKeyColumns = requireNonNull(dupKeyColumns, "dupKeyColumns is null");
-
-        String vars = Joiner.on(',').join(nCopies(handle.getColumnNames().size(), "?"));
-        // ON DUPLICATE KEY UPDATE counter1 = counter1 + 1, counter2 = counter2 + 1;
-        StringBuilder sql = new StringBuilder()
-                .append("UPSERT INTO ")
-                .append(getFullTableName(handle.getCatalogName(), handle.getSchemaName(), handle.getTableName()))
-                .append(" VALUES (").append(vars).append(")");
-
-        if (!dupKeyColumns.isEmpty()) {
-            sql.append(" ON DUPLICATE KEY UPDATE ");
-            sql.append(dupKeyColumns.stream().map(column -> column + " = " + column + " + ?").collect(Collectors.joining(",")));
-        }
-
-        return sql.toString();
-    }
-
     protected ResultSet getTables(PhoenixConnection connection, String schemaName, String tableName)
             throws SQLException
     {
@@ -551,7 +538,7 @@ public class PhoenixClient
                 properties.put(PhoenixTableProperties.ROWKEYS, table.getPKColumns().stream()
                         .map(PColumn::getName)
                         .map(PName::getString)
-                        .filter(name -> !name.startsWith("_"))
+                        .filter(name -> !name.startsWith("_") && !ROWKEY.equals(name))
                         .map(name -> {
                             try {
                                 if (table.getColumnForColumnName(name).isRowTimestamp()) {
@@ -614,6 +601,19 @@ public class PhoenixClient
             throw new PrestoException(PHOENIX_ERROR, e);
         }
         return properties.build();
+    }
+
+    public static String getFullTableName(String catalog, String schema, String table)
+    {
+        StringBuilder sb = new StringBuilder();
+        if (!isNullOrEmpty(catalog)) {
+            sb.append(catalog).append(".");
+        }
+        if (!isNullOrEmpty(schema)) {
+            sb.append(schema).append(".");
+        }
+        sb.append(table);
+        return sb.toString();
     }
 
     protected static String toSqlType(Type type)
@@ -698,19 +698,6 @@ public class PhoenixClient
                 return new ArrayType(basePrestoType);
         }
         return null;
-    }
-
-    private static String getFullTableName(String catalog, String schema, String table)
-    {
-        StringBuilder sb = new StringBuilder();
-        if (!isNullOrEmpty(catalog)) {
-            sb.append(catalog).append(".");
-        }
-        if (!isNullOrEmpty(schema)) {
-            sb.append(schema).append(".");
-        }
-        sb.append(table);
-        return sb.toString();
     }
 
     private static String escapeNamePattern(String name, String escape)

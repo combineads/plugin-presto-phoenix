@@ -20,6 +20,7 @@ import com.facebook.presto.spi.PrestoException;
 import com.facebook.presto.spi.block.Block;
 import com.facebook.presto.spi.type.DecimalType;
 import com.facebook.presto.spi.type.Type;
+import com.google.common.base.Joiner;
 import com.google.common.collect.ImmutableList;
 import com.google.common.primitives.Shorts;
 import com.google.common.primitives.SignedBytes;
@@ -35,9 +36,12 @@ import java.sql.SQLNonTransientException;
 import java.sql.Timestamp;
 import java.util.Collection;
 import java.util.List;
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 
+import static com.facebook.presto.plugin.phoenix.PhoenixClient.ROWKEY;
+import static com.facebook.presto.plugin.phoenix.PhoenixClient.getFullTableName;
 import static com.facebook.presto.plugin.phoenix.PhoenixClient.toSqlType;
 import static com.facebook.presto.plugin.phoenix.PhoenixErrorCode.PHOENIX_ERROR;
 import static com.facebook.presto.plugin.phoenix.PhoenixErrorCode.PHOENIX_NON_TRANSIENT_ERROR;
@@ -58,6 +62,7 @@ import static com.facebook.presto.spi.type.VarbinaryType.VARBINARY;
 import static com.facebook.presto.spi.type.Varchars.isVarcharType;
 import static java.lang.Float.intBitsToFloat;
 import static java.lang.Math.toIntExact;
+import static java.util.Collections.nCopies;
 import static java.util.concurrent.CompletableFuture.completedFuture;
 import static java.util.concurrent.TimeUnit.DAYS;
 import static org.joda.time.chrono.ISOChronology.getInstanceUTC;
@@ -77,6 +82,7 @@ public class PhoenixPageSink
     {
         columnTypes = handle.getColumnTypes();
         columnNames = handle.getColumnNames();
+
         List<String> duplicateKeyUpdateColumns = PhoenixSessionProperties.getDuplicateKeyUpdateColumns(session);
 
         dupKeyColumns = columnNames.stream().filter(column -> duplicateKeyUpdateColumns.contains(column)).collect(Collectors.toList());
@@ -90,11 +96,31 @@ public class PhoenixPageSink
         }
 
         try {
-            statement = connection.prepareStatement(phoenixClient.buildInsertSql(handle, dupKeyColumns));
+            statement = connection.prepareStatement(buildInsertSql(handle));
         }
         catch (SQLException e) {
             throw new PrestoException(PHOENIX_ERROR, e);
         }
+    }
+
+    public String buildInsertSql(PhoenixOutputTableHandle handle)
+    {
+        String columns = Joiner.on(',').join(handle.getColumnNames());
+        String vars = Joiner.on(',').join(nCopies(handle.getColumnNames().size(), "?"));
+        // ON DUPLICATE KEY UPDATE counter1 = counter1 + 1, counter2 = counter2 + 1;
+        StringBuilder sql = new StringBuilder()
+                .append("UPSERT INTO ")
+                .append(getFullTableName(handle.getCatalogName(), handle.getSchemaName(), handle.getTableName()))
+                .append("(").append(columns).append(")")
+                .append(" VALUES (")
+                .append(vars).append(")");
+
+        if (!dupKeyColumns.isEmpty()) {
+            sql.append(" ON DUPLICATE KEY UPDATE ");
+            sql.append(dupKeyColumns.stream().map(column -> column + " = " + column + " + ?").collect(Collectors.joining(",")));
+        }
+
+        return sql.toString();
     }
 
     @Override
@@ -108,14 +134,23 @@ public class PhoenixPageSink
                     Block block = page.getBlock(channel);
                     int parameter = channel + 1;
                     Type type = columnTypes.get(channel);
-                    Object value = getObjectValue(type, block, position);
+                    String columnName = columnNames.get(channel);
+
+                    Object value;
+                    if (ROWKEY.equals(columnName)) {
+                        value = UUID.randomUUID().toString();
+                    }
+                    else {
+                        value = getObjectValue(type, block, position);
+                    }
+
                     if (value instanceof Array) {
                         statement.setArray(parameter, (Array) value);
                     }
                     else {
                         statement.setObject(parameter, value);
 
-                        int dupKeyPos = dupKeyColumns.indexOf(columnNames.get(channel));
+                        int dupKeyPos = dupKeyColumns.indexOf(columnName);
                         if (dupKeyPos > -1) {
                             dupKeyValues[dupKeyPos] = value;
                         }
