@@ -51,7 +51,10 @@ public final class PhoenixQueryRunner
     public static QueryRunner createPhoenixQueryRunner(Map<String, String> extraProperties, List<TpchTable<?>> tables)
             throws Exception
     {
-        DistributedQueryRunner queryRunner = new DistributedQueryRunner(createSession(), 4, extraProperties);
+        DistributedQueryRunner queryRunner = DistributedQueryRunner.builder(createSession())
+                .setNodeCount(4)
+                .setExtraProperties(extraProperties)
+                .build();
 
         queryRunner.installPlugin(new TpchPlugin());
         queryRunner.createCatalog("tpch", "tpch");

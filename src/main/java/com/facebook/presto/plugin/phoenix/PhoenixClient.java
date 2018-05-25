@@ -32,6 +32,7 @@ import com.google.common.base.Joiner;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
+import com.google.common.collect.Lists;
 import io.airlift.log.Logger;
 import org.apache.hadoop.hbase.HColumnDescriptor;
 import org.apache.hadoop.hbase.HConstants;
@@ -39,10 +40,20 @@ import org.apache.hadoop.hbase.HRegionLocation;
 import org.apache.hadoop.hbase.HTableDescriptor;
 import org.apache.hadoop.hbase.client.HBaseAdmin;
 import org.apache.hadoop.hbase.client.Scan;
+import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.phoenix.compile.QueryPlan;
+import org.apache.phoenix.coprocessor.BaseScannerRegionObserver;
+import org.apache.phoenix.iterate.ConcatResultIterator;
+import org.apache.phoenix.iterate.LookAheadResultIterator;
 import org.apache.phoenix.iterate.MapReduceParallelScanGrouper;
+import org.apache.phoenix.iterate.PeekingResultIterator;
+import org.apache.phoenix.iterate.ResultIterator;
+import org.apache.phoenix.iterate.RoundRobinResultIterator;
+import org.apache.phoenix.iterate.SequenceResultIterator;
+import org.apache.phoenix.iterate.TableResultIterator;
 import org.apache.phoenix.jdbc.PhoenixConnection;
 import org.apache.phoenix.jdbc.PhoenixDriver;
+import org.apache.phoenix.jdbc.PhoenixResultSet;
 import org.apache.phoenix.jdbc.PhoenixStatement;
 import org.apache.phoenix.query.KeyRange;
 import org.apache.phoenix.query.QueryConstants;
@@ -261,9 +272,7 @@ public class PhoenixClient
             final List<KeyRange> splits = new LinkedList<>();
 
             for (List<Scan> scans : queryPlan.getScans()) {
-                for (Scan scan : scans) {
-                    splits.add(KeyRange.getKeyRange(scan.getStartRow(), scan.getStopRow()));
-                }
+                splits.add(KeyRange.getKeyRange(scans.get(0).getStartRow(), scans.get(scans.size() - 1).getStopRow()));
             }
 
             byte[] tableName = queryPlan.getTableRef().getTable().getPhysicalName().getBytes();
@@ -298,6 +307,54 @@ public class PhoenixClient
         }
     }
 
+    public PhoenixResultSet getResultSet(String inputQuery, KeyRange inputSplitKeyRange) throws Exception
+    {
+        List<Scan> inputSplitScans = null;
+        QueryPlan queryPlan = null;
+
+        try (PhoenixConnection connection = getConnection()) {
+            queryPlan = getQueryPlan(connection, inputQuery);
+            for (List<Scan> scans : queryPlan.getScans()) {
+                if (KeyRange.getKeyRange(scans.get(0).getStartRow(), scans.get(scans.size() - 1).getStopRow()).equals(inputSplitKeyRange)) {
+                    inputSplitScans = scans;
+                    break;
+                }
+            }
+        }
+        catch (SQLException e) {
+            throw new PrestoException(PHOENIX_ERROR, e);
+        }
+        inputSplitScans = requireNonNull(inputSplitScans, "inputSplitScans is null");
+
+        List<PeekingResultIterator> iterators = Lists.newArrayListWithExpectedSize(inputSplitScans.size());
+        for (Scan scan : inputSplitScans) {
+            // For MR, skip the region boundary check exception if we encounter a split. ref: PHOENIX-2599
+            scan.setAttribute(BaseScannerRegionObserver.SKIP_REGION_BOUNDARY_CHECK, Bytes.toBytes(true));
+
+            PeekingResultIterator peekingResultIterator;
+            final TableResultIterator tableResultIterator = new TableResultIterator(
+                    queryPlan.getContext().getConnection().getMutationState(),
+                    scan,
+                    null,
+                    queryPlan.getContext().getConnection().getQueryServices().getRenewLeaseThresholdMilliSeconds(),
+                    queryPlan,
+                    MapReduceParallelScanGrouper.getInstance());
+            peekingResultIterator = LookAheadResultIterator.wrap(tableResultIterator);
+
+            iterators.add(peekingResultIterator);
+        }
+        ResultIterator iterator = queryPlan.useRoundRobinIterator() ? RoundRobinResultIterator.newIterator(iterators, queryPlan) : ConcatResultIterator.newIterator(iterators);
+        if (queryPlan.getContext().getSequenceManager().getSequenceCount() > 0) {
+            iterator = new SequenceResultIterator(iterator, queryPlan.getContext().getSequenceManager());
+        }
+        // Clone the row projector as it's not thread safe and would be used simultaneously by
+        // multiple threads otherwise.
+
+        return new PhoenixResultSet(iterator, queryPlan.getProjector()
+                .cloneIfNecessary(),
+                queryPlan.getContext());
+    }
+
     public PhoenixConnection getConnection()
             throws SQLException
     {
@@ -321,7 +378,7 @@ public class PhoenixClient
                 tupleDomain);
     }
 
-    public static QueryPlan getQueryPlan(PhoenixConnection connection, String inputQuery)
+    public QueryPlan getQueryPlan(PhoenixConnection connection, String inputQuery)
     {
         requireNonNull(inputQuery, "inputQuery is null");
         try (Statement statement = connection.createStatement()) {

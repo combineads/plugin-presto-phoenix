@@ -17,41 +17,26 @@ import com.facebook.presto.spi.ConnectorPageSource;
 import com.facebook.presto.spi.Page;
 import com.facebook.presto.spi.PageBuilder;
 import com.facebook.presto.spi.PrestoException;
+import com.facebook.presto.spi.block.Block;
 import com.facebook.presto.spi.block.BlockBuilder;
 import com.facebook.presto.spi.type.DecimalType;
 import com.facebook.presto.spi.type.RealType;
 import com.facebook.presto.spi.type.StandardTypes;
 import com.facebook.presto.spi.type.Type;
 import io.airlift.slice.Slice;
-import org.apache.hadoop.hbase.client.Scan;
-import org.apache.hadoop.hbase.util.Bytes;
-import org.apache.phoenix.compile.QueryPlan;
-import org.apache.phoenix.coprocessor.BaseScannerRegionObserver;
-import org.apache.phoenix.iterate.ConcatResultIterator;
-import org.apache.phoenix.iterate.LookAheadResultIterator;
-import org.apache.phoenix.iterate.MapReduceParallelScanGrouper;
-import org.apache.phoenix.iterate.PeekingResultIterator;
-import org.apache.phoenix.iterate.ResultIterator;
-import org.apache.phoenix.iterate.RoundRobinResultIterator;
-import org.apache.phoenix.iterate.SequenceResultIterator;
-import org.apache.phoenix.iterate.TableResultIterator;
 import org.apache.phoenix.jdbc.PhoenixConnection;
 import org.apache.phoenix.jdbc.PhoenixResultSet;
-import org.apache.phoenix.query.KeyRange;
 import org.apache.phoenix.schema.tuple.ResultTuple;
 import org.joda.time.chrono.ISOChronology;
 
 import java.math.BigDecimal;
 import java.sql.Array;
-import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.Arrays;
 import java.util.Date;
-import java.util.LinkedList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
-import static com.facebook.presto.plugin.phoenix.PhoenixClient.getQueryPlan;
 import static com.facebook.presto.plugin.phoenix.TypeUtils.isArrayType;
 import static com.facebook.presto.spi.StandardErrorCode.GENERIC_INTERNAL_ERROR;
 import static com.facebook.presto.spi.type.BigintType.BIGINT;
@@ -69,7 +54,6 @@ import static io.airlift.slice.Slices.wrappedBuffer;
 import static java.lang.Float.floatToRawIntBits;
 import static java.lang.reflect.Array.get;
 import static java.lang.reflect.Array.getLength;
-import static java.util.Objects.requireNonNull;
 import static java.util.stream.Collectors.toList;
 import static org.apache.hadoop.hbase.client.Result.getTotalSizeOfCells;
 import static org.joda.time.DateTimeZone.UTC;
@@ -109,55 +93,11 @@ public class PhoenixPageSource
                     split.getTupleDomain(),
                     columns);
 
-            QueryPlan queryPlan = getQueryPlan(connection, inputQuery);
-
-            Scan inputSplitScan = getInputSplit(queryPlan, split.getKeyRange());
-            inputSplitScan = requireNonNull(inputSplitScan, "inputSplitScan is null");
-
-            resultSet = getResultSet(queryPlan, inputSplitScan);
+            resultSet = phoenixClient.getResultSet(inputQuery, split.getKeyRange());
         }
         catch (Exception e) {
             throw handleSqlException(e);
         }
-    }
-
-    private Scan getInputSplit(QueryPlan queryPlan, KeyRange inputSplitKeyRange)
-    {
-        for (List<Scan> scans : queryPlan.getScans()) {
-            for (Scan scan : scans) {
-                if (KeyRange.getKeyRange(scan.getStartRow(), scan.getStopRow()).equals(inputSplitKeyRange)) {
-                    return scan;
-                }
-            }
-        }
-        return null;
-    }
-
-    private PhoenixResultSet getResultSet(QueryPlan queryPlan, Scan inputSplitScan) throws Exception
-    {
-        List<PeekingResultIterator> iterators = new LinkedList<>();
-        inputSplitScan.setAttribute(BaseScannerRegionObserver.SKIP_REGION_BOUNDARY_CHECK, Bytes.toBytes(true));
-        final TableResultIterator tableResultIterator = new TableResultIterator(
-                queryPlan.getContext().getConnection().getMutationState(),
-                inputSplitScan,
-                null,
-                queryPlan.getContext().getConnection().getQueryServices().getRenewLeaseThresholdMilliSeconds(),
-                queryPlan,
-                MapReduceParallelScanGrouper.getInstance());
-
-        PeekingResultIterator peekingResultIterator = LookAheadResultIterator.wrap(tableResultIterator);
-        iterators.add(peekingResultIterator);
-        ResultIterator iterator = queryPlan.useRoundRobinIterator()
-                ? RoundRobinResultIterator.newIterator(iterators, queryPlan)
-                : ConcatResultIterator.newIterator(iterators);
-        if (queryPlan.getContext().getSequenceManager().getSequenceCount() > 0) {
-            iterator = new SequenceResultIterator(iterator, queryPlan.getContext()
-                    .getSequenceManager());
-        }
-
-        return new PhoenixResultSet(iterator, queryPlan.getProjector()
-                .cloneIfNecessary(),
-                queryPlan.getContext());
     }
 
     @Override
@@ -203,13 +143,7 @@ public class PhoenixPageSource
                     pageBuilder.declarePosition();
                     for (int column = 0; column < columnTypes.size(); column++) {
                         BlockBuilder output = pageBuilder.getBlockBuilder(column);
-                        Type columnType = columnTypes.get(column);
-                        if (isArrayType(columnType)) {
-                            writeArrayBlock(output, columnType, resultSet.getArray(columnNames.get(column)));
-                        }
-                        else {
-                            appendTo(columnType, resultSet.getObject(columnNames.get(column)), output);
-                        }
+                        appendTo(columnTypes.get(column), resultSet.getObject(columnNames.get(column)), output);
                     }
                 }
             }
@@ -277,6 +211,9 @@ public class PhoenixPageSource
             else if (javaType == Slice.class) {
                 writeSlice(output, type, value);
             }
+            else if (javaType == Block.class) {
+                writeBlock(output, type, value);
+            }
             else {
                 throw new PrestoException(GENERIC_INTERNAL_ERROR, "Unhandled type for " + javaType.getSimpleName() + ":" + type.getTypeSignature());
             }
@@ -309,20 +246,30 @@ public class PhoenixPageSource
         }
     }
 
-    private void writeArrayBlock(BlockBuilder output, Type type, Array value)
+    private void writeBlock(BlockBuilder output, Type type, Object value)
     {
-        try {
-            Object[] elements = createArrayFromArrayObject(value.getArray());
-            BlockBuilder builder = output.beginBlockEntry();
-            Type columnType = type.getTypeParameters().get(0);
-            Arrays.asList(elements).forEach(element -> appendTo(columnType, element, builder));
+        if (isArrayType(type)) {
+            if (value instanceof Array) {
+                try {
+                    Object[] elements = createArrayFromArrayObject(((Array) value).getArray());
+                    BlockBuilder builder = output.beginBlockEntry();
 
-            output.closeEntry();
-            return;
+                    Arrays.asList(elements).forEach(element -> appendTo(type.getTypeParameters().get(0), element, builder));
+
+                    output.closeEntry();
+                    return;
+                }
+                catch (SQLException | RuntimeException e) {
+                    throw handleSqlException(e);
+                }
+            }
         }
-        catch (SQLException | RuntimeException e) {
-            throw handleSqlException(e);
+        else {
+            throw new PrestoException(GENERIC_INTERNAL_ERROR, "Unhandled type for Block: " + type.getTypeSignature());
         }
+
+        // not a convertible value
+        output.appendNull();
     }
 
     private Object[] createArrayFromArrayObject(Object o)
@@ -353,13 +300,22 @@ public class PhoenixPageSource
         }
         closed = true;
 
-        // use try with resources to close everything properly
-        try (PhoenixConnection connection = this.connection;
-                ResultSet resultSet = this.resultSet) {
-            // do nothing
+        if (this.resultSet != null) {
+            try {
+                this.resultSet.close();
+            }
+            catch (SQLException e) {
+                throw new RuntimeException(e);
+            }
         }
-        catch (SQLException e) {
-            throw new RuntimeException(e);
+
+        if (this.connection != null) {
+            try {
+                this.connection.close();
+            }
+            catch (SQLException e) {
+                throw new RuntimeException(e);
+            }
         }
         nanoEnd = System.nanoTime();
     }
