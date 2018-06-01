@@ -202,6 +202,11 @@ public class PhoenixClient
                 schemaName = schemaName.toUpperCase(ENGLISH);
                 tableName = tableName.toUpperCase(ENGLISH);
             }
+            int dynamicColumnsIndex = tableName.indexOf('$');
+            if (dynamicColumnsIndex > -1) {
+                // remove dynamic columns.
+                tableName = tableName.substring(0, dynamicColumnsIndex);
+            }
             try (ResultSet resultSet = getTables(connection, schemaName, tableName)) {
                 List<PhoenixTableHandle> tableHandles = new ArrayList<>();
                 while (resultSet.next()) {
