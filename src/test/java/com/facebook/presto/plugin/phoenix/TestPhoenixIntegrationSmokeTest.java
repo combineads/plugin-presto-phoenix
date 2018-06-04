@@ -167,6 +167,17 @@ public class TestPhoenixIntegrationSmokeTest
         assertOneNotNullResult("SELECT col[1] FROM tmp_array8");
     }
 
+    @Test
+    public void testDynamicColumns()
+    {
+        assertUpdate("CREATE TABLE TEST_DYNAMIC_COLUMNS (ENTRY VARCHAR, DUMMY VARCHAR, DUMMY2 VARCHAR) WITH (ROWKEYS = ARRAY['ENTRY'])");
+        assertUpdate("INSERT INTO \"test_dynamic_columns$DynColA VARCHAR(32), DynColB varchar(32)\"(ENTRY, DynColA, DynColB) VALUES('dynEntry','DynColValuea','DynColValueb')", 1);
+        assertQuery("SELECT DynColA, DynColB FROM \"test_dynamic_columns$DynColA VARCHAR(32), DynColB varchar(32)\" where entry='dynEntry'", "SELECT 'DynColValuea', 'DynColValueb'");
+
+        assertUpdate("INSERT INTO \"TEST_DYNAMIC_COLUMNS$DynColA VARCHAR(32), DynColB VARCHAR(32)\" VALUES('dynEntry','aValue','bValue','DynColValuea','DynColValueb')", 1);
+        assertQuery("SELECT entry, dummy, dummy2, DynColA, DynColB FROM \"test_dynamic_columns$DynColA VARCHAR(32), DynColB VARCHAR(32)\" where entry='dynEntry'", "SELECT 'dynEntry','aValue','bValue','DynColValuea','DynColValueb'");
+    }
+
     private void assertOneNotNullResult(String query)
     {
         MaterializedResult results = getQueryRunner().execute(getSession(), query).toTestTypes();

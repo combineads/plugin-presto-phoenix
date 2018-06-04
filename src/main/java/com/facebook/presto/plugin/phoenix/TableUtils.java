@@ -28,7 +28,6 @@ import static java.util.Objects.requireNonNull;
 public class TableUtils
 {
     private static final Splitter DYNAMIC_COLUMN_SPLITTER = Splitter.on(',').trimResults().omitEmptyStrings();
-    private static final Splitter DYNAMIC_COLUMN_TYPE_SPLITTER = Splitter.on(' ').trimResults().omitEmptyStrings();
 
     private TableUtils()
     {
@@ -53,7 +52,7 @@ public class TableUtils
         if (dynamicColumnsIndex > -1) {
             String dynamicColumns = tableName.substring(dynamicColumnsIndex + 1);
             for (String dynamicColumn : DYNAMIC_COLUMN_SPLITTER.split(dynamicColumns)) {
-                ImmutableList<String> columnSignature = ImmutableList.copyOf(DYNAMIC_COLUMN_TYPE_SPLITTER.split(dynamicColumn));
+                ImmutableList<String> columnSignature = ImmutableList.copyOf(dynamicColumn.split("\\s", 2));
                 checkArgument(columnSignature.size() == 2, "Invalid dynamic columns %s", dynamicColumn);
 
                 String columnName = columnSignature.get(0);
