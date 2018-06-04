@@ -27,6 +27,7 @@ import com.facebook.presto.spi.type.ArrayType;
 import com.facebook.presto.spi.type.CharType;
 import com.facebook.presto.spi.type.DecimalType;
 import com.facebook.presto.spi.type.Type;
+import com.facebook.presto.spi.type.TypeManager;
 import com.facebook.presto.spi.type.VarcharType;
 import com.google.common.base.Joiner;
 import com.google.common.collect.ImmutableList;
@@ -134,15 +135,16 @@ public class PhoenixClient
             .put(TIMESTAMP_WITH_TIME_ZONE, "TIMESTAMP")
             .build();
 
-    protected final String connectorId;
-    protected final Driver driver = new PhoenixDriver();
-    protected final String connectionUrl;
-    protected final Properties connectionProperties;
+    private final String connectorId;
+    private final Driver driver = new PhoenixDriver();
+    private final String connectionUrl;
+    private final Properties connectionProperties;
+    private final TypeManager typeManager;
 
     private final Map<String, HostAddress> hostCache = new HashMap<>();
 
     @Inject
-    public PhoenixClient(PhoenixConnectorId connectorId, PhoenixConfig config) throws SQLException
+    public PhoenixClient(PhoenixConnectorId connectorId, PhoenixConfig config, TypeManager typeManager) throws SQLException
     {
         this.connectorId = requireNonNull(connectorId, "connectorId is null").toString();
 
@@ -150,6 +152,8 @@ public class PhoenixClient
         connectionUrl = config.getConnectionUrl();
         connectionProperties = new Properties();
         connectionProperties.putAll(config.getConnectionProperties());
+
+        this.typeManager = requireNonNull(typeManager, "typeManager is null");
     }
 
     public Set<String> getSchemaNames()
@@ -194,18 +198,14 @@ public class PhoenixClient
     @Nullable
     public PhoenixTableHandle getTableHandle(SchemaTableName schemaTableName)
     {
+        String schemaName = schemaTableName.getSchemaName();
+        String tableName = TableUtils.normalizeTableName(schemaTableName.getTableName());
+
         try (PhoenixConnection connection = getConnection()) {
             DatabaseMetaData metadata = connection.getMetaData();
-            String schemaName = schemaTableName.getSchemaName();
-            String tableName = schemaTableName.getTableName();
             if (metadata.storesUpperCaseIdentifiers()) {
                 schemaName = schemaName.toUpperCase(ENGLISH);
                 tableName = tableName.toUpperCase(ENGLISH);
-            }
-            int dynamicColumnsIndex = tableName.indexOf('$');
-            if (dynamicColumnsIndex > -1) {
-                // remove dynamic columns.
-                tableName = tableName.substring(0, dynamicColumnsIndex);
             }
             try (ResultSet resultSet = getTables(connection, schemaName, tableName)) {
                 List<PhoenixTableHandle> tableHandles = new ArrayList<>();
@@ -231,6 +231,11 @@ public class PhoenixClient
         }
     }
 
+    public List<PhoenixColumnHandle> getDynamicColumns(String tableName)
+    {
+        return TableUtils.getDynamicColumnHandles(connectorId, typeManager, tableName);
+    }
+
     public List<PhoenixColumnHandle> getColumns(PhoenixTableHandle tableHandle, boolean reqiuredRowKey)
     {
         try (PhoenixConnection connection = getConnection()) {
@@ -254,6 +259,9 @@ public class PhoenixClient
                 if (columns.isEmpty()) {
                     throw new PrestoException(NOT_SUPPORTED, "Table has no supported column types: " + tableHandle.getSchemaTableName());
                 }
+                for (PhoenixColumnHandle phoenixColumnHandle : getDynamicColumns(tableHandle.getSchemaTableName().getTableName())) {
+                    columns.add(phoenixColumnHandle);
+                }
                 return ImmutableList.copyOf(columns);
             }
         }
@@ -265,11 +273,15 @@ public class PhoenixClient
     public ConnectorSplitSource getSplits(PhoenixTableLayoutHandle layoutHandle)
     {
         PhoenixTableHandle handle = layoutHandle.getTable();
+        SchemaTableName schemaTableName = handle.getSchemaTableName();
+        String schemaName = schemaTableName.getSchemaName();
+        String tableName = schemaTableName.getTableName();
+
         try (PhoenixConnection connection = getConnection()) {
             String inputQuery = buildSql(connection,
                     handle.getCatalogName(),
-                    handle.getSchemaName(),
-                    handle.getTableName(),
+                    schemaName,
+                    tableName,
                     layoutHandle.getTupleDomain(),
                     getColumns(handle, false));
 
@@ -280,11 +292,11 @@ public class PhoenixClient
                 splits.add(KeyRange.getKeyRange(scans.get(0).getStartRow(), scans.get(scans.size() - 1).getStopRow()));
             }
 
-            byte[] tableName = queryPlan.getTableRef().getTable().getPhysicalName().getBytes();
+            byte[] hbaseTableName = queryPlan.getTableRef().getTable().getPhysicalName().getBytes();
             return new FixedSplitSource(splits.stream().map(split -> (KeyRange) split).map(split -> {
                 List<HostAddress> addresses;
                 try {
-                    HRegionLocation location = connection.getQueryServices().getTableRegionLocation(tableName, split.getLowerRange());
+                    HRegionLocation location = connection.getQueryServices().getTableRegionLocation(hbaseTableName, split.getLowerRange());
                     String hostName = location.getHostname();
                     HostAddress address = hostCache.get(hostName);
                     if (address == null) {
@@ -300,8 +312,8 @@ public class PhoenixClient
                 return new PhoenixSplit(
                         connectorId,
                         handle.getCatalogName(),
-                        handle.getSchemaName(),
-                        handle.getTableName(),
+                        schemaName,
+                        schemaTableName.getTableName(),
                         layoutHandle.getTupleDomain(),
                         split,
                         addresses);
@@ -374,11 +386,18 @@ public class PhoenixClient
             List<PhoenixColumnHandle> columnHandles)
             throws SQLException, IOException, InterruptedException
     {
+        String phoenixTableName = TableUtils.normalizeTableName(tableName);
+        List<PhoenixColumnHandle> dynamicColumnHandlers = getDynamicColumns(tableName);
+        if (dynamicColumnHandlers.size() > 0) {
+            List<String> dynamicColumns = dynamicColumnHandlers.stream().map(column -> new StringBuffer(column.getColumnName()).append(" ").append(toSqlType(column.getColumnType())).toString()).collect(Collectors.toList());
+            phoenixTableName += "(" + Joiner.on(',').join(dynamicColumns) + ")";
+        }
+
         return new QueryBuilder().buildSql(
                 connection,
                 catalogName,
                 schemaName,
-                tableName,
+                phoenixTableName,
                 columnHandles,
                 tupleDomain);
     }

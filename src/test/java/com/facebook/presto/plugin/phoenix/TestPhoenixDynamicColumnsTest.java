@@ -32,7 +32,7 @@ public class TestPhoenixDynamicColumnsTest
     public void tesdtDuplicateKeyUpdateColumns()
     {
         assertUpdate("CREATE TABLE TEST_DYNAMIC_COLUMNS (ENTRY VARCHAR, DUMMY VARCHAR, DUMMY2 VARCHAR) WITH (ROWKEYS = ARRAY['ENTRY'])");
-        assertUpdate("INSERT INTO \"test_dynamic_columns$DynColA VARCHAR, DynColB varchar\" VALUES('dynEntry','DynColValuea','DynColValueb')", 1);
+        assertUpdate("INSERT INTO \"test_dynamic_columns$DynColA VARCHAR, DynColB varchar\"(ENTRY, DynColA, DynColB) VALUES('dynEntry','DynColValuea','DynColValueb')", 1);
         assertQuery("SELECT DynColA FROM \"test_dynamic_columns$DynColA VARCHAR\" where entry='dynEntry'", "SELECT 'DynColValuea'");
         assertQuery("SELECT DynColB FROM \"test_dynamic_columns$DynColB VARCHAR\" where entry='dynEntry'", "SELECT 'DynColValueb'");
     }

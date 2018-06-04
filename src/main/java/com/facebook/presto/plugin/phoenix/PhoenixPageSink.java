@@ -98,21 +98,39 @@ public class PhoenixPageSink
         }
 
         try {
-            statement = connection.prepareStatement(buildInsertSql(handle));
+            statement = connection.prepareStatement(buildInsertSql(handle, phoenixClient));
         }
         catch (SQLException e) {
             throw new PrestoException(PHOENIX_ERROR, e);
         }
     }
 
-    public String buildInsertSql(PhoenixOutputTableHandle handle)
+    public String buildInsertSql(PhoenixOutputTableHandle handle, PhoenixClient phoenixClient)
     {
-        String columns = Joiner.on(',').join(handle.getColumnNames());
-        String vars = Joiner.on(',').join(nCopies(handle.getColumnNames().size(), "?"));
+        String tableName = TableUtils.normalizeTableName(handle.getTableName());
+        List<PhoenixColumnHandle> dynamicColumnHandlers = phoenixClient.getDynamicColumns(handle.getTableName());
+        List<String> dynamicColumnNames = dynamicColumnHandlers.stream().map(column -> column.getColumnName().trim()).collect(Collectors.toList());
+        List<String> dynamicColumns = dynamicColumnHandlers.stream().map(column -> new StringBuffer(column.getColumnName()).append(" ").append(toSqlType(column.getColumnType())).toString()).collect(Collectors.toList());
+
+        ImmutableList.Builder<String> columnsNmaes = ImmutableList.builder();
+        for (String column : handle.getColumnNames()) {
+            int dynamicColumnPos = dynamicColumnNames.indexOf(column);
+            if (dynamicColumnPos > -1) {
+                columnsNmaes.add(dynamicColumns.get(dynamicColumnPos));
+            }
+            else {
+                columnsNmaes.add(column);
+            }
+        }
+
+        List<String> columnList = columnsNmaes.build();
+        String columns = Joiner.on(',').join(columnList);
+        String vars = Joiner.on(',').join(nCopies(columnList.size(), "?"));
+
         // ON DUPLICATE KEY UPDATE counter1 = counter1 + 1, counter2 = counter2 + 1;
         StringBuilder sql = new StringBuilder()
                 .append("UPSERT INTO ")
-                .append(getFullTableName(handle.getCatalogName(), handle.getSchemaName(), handle.getTableName()))
+                .append(getFullTableName(handle.getCatalogName(), handle.getSchemaName(), tableName))
                 .append("(").append(columns).append(")")
                 .append(" VALUES (")
                 .append(vars).append(")");
