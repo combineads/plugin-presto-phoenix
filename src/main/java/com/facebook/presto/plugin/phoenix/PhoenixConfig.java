@@ -13,6 +13,7 @@
  */
 package com.facebook.presto.plugin.phoenix;
 
+import com.google.common.base.Splitter;
 import io.airlift.configuration.Config;
 
 import javax.validation.constraints.NotNull;
@@ -21,6 +22,8 @@ import java.util.Properties;
 
 public class PhoenixConfig
 {
+    private static final Splitter CONNECTION_PROPERTIES_SPLITTER = Splitter.on(',').trimResults().omitEmptyStrings();
+
     private Properties connectionProperties = new Properties();
     private String connectionUrl;
 
@@ -46,14 +49,12 @@ public class PhoenixConfig
     @Config("connection-properties")
     public PhoenixConfig setConnectionProperties(String properties)
     {
-        final String[] entries = properties.split(";");
-        for (int i = 0; i < entries.length; ++i) {
-            final String entry = entries[i];
+        for (String entry : CONNECTION_PROPERTIES_SPLITTER.split(properties)) {
             if (entry.length() > 0) {
                 final int index = entry.indexOf('=');
                 if (index > 0) {
-                    final String name = entry.substring(0, index);
-                    final String value = entry.substring(index + 1);
+                    final String name = entry.substring(0, index).trim();
+                    final String value = entry.substring(index + 1).trim();
                     connectionProperties.setProperty(name, value);
                 }
                 if (index <= 0) {
