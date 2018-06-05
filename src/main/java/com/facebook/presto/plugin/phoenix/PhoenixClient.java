@@ -389,7 +389,7 @@ public class PhoenixClient
         String phoenixTableName = TableUtils.normalizeTableName(tableName);
         List<PhoenixColumnHandle> dynamicColumnHandlers = getDynamicColumns(tableName);
         if (dynamicColumnHandlers.size() > 0) {
-            List<String> dynamicColumns = dynamicColumnHandlers.stream().map(column -> new StringBuffer(column.getColumnName()).append(" ").append(toSqlType(column.getColumnType())).toString()).collect(Collectors.toList());
+            List<String> dynamicColumns = dynamicColumnHandlers.stream().map(column -> new StringBuilder(column.getColumnName()).append(" ").append(toSqlType(column.getColumnType())).toString()).collect(Collectors.toList());
             phoenixTableName += "(" + Joiner.on(',').join(dynamicColumns) + ")";
         }
 

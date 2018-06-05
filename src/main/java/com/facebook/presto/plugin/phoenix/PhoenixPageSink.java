@@ -110,7 +110,7 @@ public class PhoenixPageSink
         String tableName = TableUtils.normalizeTableName(handle.getTableName());
         List<PhoenixColumnHandle> dynamicColumnHandlers = phoenixClient.getDynamicColumns(handle.getTableName());
         List<String> dynamicColumnNames = dynamicColumnHandlers.stream().map(column -> column.getColumnName().trim()).collect(Collectors.toList());
-        List<String> dynamicColumns = dynamicColumnHandlers.stream().map(column -> new StringBuffer(column.getColumnName()).append(" ").append(toSqlType(column.getColumnType())).toString()).collect(Collectors.toList());
+        List<String> dynamicColumns = dynamicColumnHandlers.stream().map(column -> new StringBuilder(column.getColumnName()).append(" ").append(toSqlType(column.getColumnType())).toString()).collect(Collectors.toList());
 
         ImmutableList.Builder<String> columnsNmaes = ImmutableList.builder();
         for (String column : handle.getColumnNames()) {
