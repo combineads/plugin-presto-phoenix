@@ -25,7 +25,7 @@ public class TestPhoenixDistributedQueries
     public TestPhoenixDistributedQueries()
             throws Exception
     {
-        super(() -> PhoenixQueryRunner.createPhoenixQueryRunner(ImmutableMap.of(), TpchTable.getTables()));
+        super(() -> PhoenixQueryRunner.createPhoenixQueryRunner(4, ImmutableMap.of(), TpchTable.getTables()));
     }
 
     @Override

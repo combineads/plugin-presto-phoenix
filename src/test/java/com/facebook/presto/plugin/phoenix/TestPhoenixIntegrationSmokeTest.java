@@ -41,7 +41,7 @@ public class TestPhoenixIntegrationSmokeTest
     public TestPhoenixIntegrationSmokeTest()
             throws Exception
     {
-        super(() -> PhoenixQueryRunner.createPhoenixQueryRunner(ImmutableMap.of(), ImmutableList.of(ORDERS)));
+        super(() -> PhoenixQueryRunner.createPhoenixQueryRunner(4, ImmutableMap.of(), ImmutableList.of(ORDERS)));
     }
 
     @Test

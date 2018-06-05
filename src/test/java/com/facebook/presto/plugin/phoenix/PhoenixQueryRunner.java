@@ -48,11 +48,11 @@ public final class PhoenixQueryRunner
     {
     }
 
-    public static QueryRunner createPhoenixQueryRunner(Map<String, String> extraProperties, List<TpchTable<?>> tables)
+    public static QueryRunner createPhoenixQueryRunner(int nodeCount, Map<String, String> extraProperties, List<TpchTable<?>> tables)
             throws Exception
     {
         DistributedQueryRunner queryRunner = DistributedQueryRunner.builder(createSession())
-                .setNodeCount(4)
+                .setNodeCount(nodeCount)
                 .setExtraProperties(extraProperties)
                 .build();
 
