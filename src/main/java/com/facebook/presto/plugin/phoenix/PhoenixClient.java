@@ -56,13 +56,16 @@ import org.apache.phoenix.jdbc.PhoenixConnection;
 import org.apache.phoenix.jdbc.PhoenixDriver;
 import org.apache.phoenix.jdbc.PhoenixResultSet;
 import org.apache.phoenix.jdbc.PhoenixStatement;
+import org.apache.phoenix.parse.PFunction;
 import org.apache.phoenix.query.KeyRange;
 import org.apache.phoenix.query.QueryConstants;
 import org.apache.phoenix.schema.AmbiguousColumnException;
 import org.apache.phoenix.schema.ColumnNotFoundException;
 import org.apache.phoenix.schema.PColumn;
+import org.apache.phoenix.schema.PMetaData;
 import org.apache.phoenix.schema.PName;
 import org.apache.phoenix.schema.PTable;
+import org.apache.phoenix.schema.PTableType;
 import org.apache.phoenix.schema.TableProperty;
 import org.apache.phoenix.schema.types.PDataType;
 
@@ -71,7 +74,6 @@ import javax.inject.Inject;
 
 import java.io.IOException;
 import java.sql.DatabaseMetaData;
-import java.sql.Driver;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
@@ -136,7 +138,7 @@ public class PhoenixClient
             .build();
 
     private final String connectorId;
-    private final Driver driver = new PhoenixDriver();
+    private final PhoenixDriver driver = new PhoenixDriver();
     private final String connectionUrl;
     private final Properties connectionProperties;
     private final TypeManager typeManager;
@@ -375,7 +377,23 @@ public class PhoenixClient
     public PhoenixConnection getConnection()
             throws SQLException
     {
-        return driver.connect(connectionUrl, connectionProperties).unwrap(PhoenixConnection.class);
+        PhoenixConnection phxConn = driver.connect(connectionUrl, connectionProperties).unwrap(PhoenixConnection.class);
+        // purge MetaDataCache except for system tables
+        phxConn.getMetaDataCache().pruneTables(new PMetaData.Pruner()
+        {
+            @Override
+            public boolean prune(PTable table)
+            {
+                return table.getType() != PTableType.SYSTEM;
+            }
+
+            @Override
+            public boolean prune(PFunction function)
+            {
+                return false;
+            }
+        });
+        return phxConn;
     }
 
     public String buildSql(PhoenixConnection connection,
