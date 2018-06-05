@@ -27,6 +27,7 @@ import java.util.stream.Collectors;
 
 import static com.facebook.presto.spi.session.PropertyMetadata.booleanSessionProperty;
 import static com.facebook.presto.spi.session.PropertyMetadata.integerSessionProperty;
+import static com.facebook.presto.spi.session.PropertyMetadata.longSessionProperty;
 import static com.facebook.presto.spi.session.PropertyMetadata.stringSessionProperty;
 import static com.facebook.presto.spi.type.TypeSignature.parseTypeSignature;
 import static java.util.Locale.ENGLISH;
@@ -45,6 +46,7 @@ public final class PhoenixTableProperties
     public static final String DISABLE_WAL = "disable_wal";
     public static final String IMMUTABLE_ROWS = "immutable_rows";
     public static final String DEFAULT_COLUMN_FAMILY = "default_column_family";
+    public static final String UPDATE_CACHE_FREQUENCY = "update_cache_frequency";
     public static final String BLOOMFILTER = "bloomfilter";
     public static final String VERSIONS = "versions";
     public static final String MIN_VERSIONS = "min_versions";
@@ -91,6 +93,11 @@ public final class PhoenixTableProperties
                 stringSessionProperty(
                         DEFAULT_COLUMN_FAMILY,
                         "string option determines the column family used used when none is specified.",
+                        null,
+                        false),
+                longSessionProperty(
+                        UPDATE_CACHE_FREQUENCY,
+                        "UPDATE_CACHE_FREQUENCY determines how often an RPC is done to ensure you’re seeing the latest schema.",
                         null,
                         false),
                 stringSessionProperty(
@@ -186,6 +193,18 @@ public final class PhoenixTableProperties
         requireNonNull(tableProperties);
 
         String value = (String) tableProperties.get(DEFAULT_COLUMN_FAMILY);
+        if (value == null) {
+            return Optional.empty();
+        }
+
+        return Optional.of(value);
+    }
+
+    public static Optional<Long> getUpdateCacheFrequency(Map<String, Object> tableProperties)
+    {
+        requireNonNull(tableProperties);
+
+        Long value = (Long) tableProperties.get(UPDATE_CACHE_FREQUENCY);
         if (value == null) {
             return Optional.empty();
         }

@@ -491,6 +491,7 @@ public class PhoenixClient
             PhoenixTableProperties.getDisableWal(tableProperties).ifPresent(value -> talbeOptions.add(TableProperty.DISABLE_WAL + "=" + value));
             PhoenixTableProperties.getImmutableRows(tableProperties).ifPresent(value -> talbeOptions.add(TableProperty.IMMUTABLE_ROWS + "=" + value));
             PhoenixTableProperties.getDefaultColumnFamily(tableProperties).ifPresent(value -> talbeOptions.add(TableProperty.DEFAULT_COLUMN_FAMILY + "=" + value));
+            PhoenixTableProperties.getUpdateCacheFrequency(tableProperties).ifPresent(value -> talbeOptions.add(TableProperty.UPDATE_CACHE_FREQUENCY + "=" + value));
             PhoenixTableProperties.getBloomfilter(tableProperties).ifPresent(value -> talbeOptions.add(HColumnDescriptor.BLOOMFILTER + "='" + value + "'"));
             PhoenixTableProperties.getVersions(tableProperties).ifPresent(value -> talbeOptions.add(HConstants.VERSIONS + "=" + value));
             PhoenixTableProperties.getMinVersions(tableProperties).ifPresent(value -> talbeOptions.add(HColumnDescriptor.MIN_VERSIONS + "=" + value));
@@ -650,6 +651,8 @@ public class PhoenixClient
             if (table.getDefaultFamilyName() != null) {
                 properties.put(PhoenixTableProperties.DEFAULT_COLUMN_FAMILY, defaultFamilyName);
             }
+
+            properties.put(PhoenixTableProperties.UPDATE_CACHE_FREQUENCY, table.getUpdateCacheFrequency());
 
             HTableDescriptor tableDesc = admin.getTableDescriptor(table.getPhysicalName().getBytes());
 
