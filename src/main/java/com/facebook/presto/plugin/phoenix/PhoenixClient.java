@@ -619,7 +619,7 @@ public class PhoenixClient
                 resultSet.getString("TABLE_NAME").toLowerCase(ENGLISH));
     }
 
-    protected void execute(PhoenixConnection connection, String query)
+    public void execute(PhoenixConnection connection, String query)
             throws SQLException
     {
         try (Statement statement = connection.createStatement()) {

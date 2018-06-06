@@ -34,7 +34,9 @@ import com.facebook.presto.spi.connector.ConnectorOutputMetadata;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import io.airlift.slice.Slice;
+import org.apache.phoenix.jdbc.PhoenixConnection;
 
+import java.sql.SQLException;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
@@ -42,6 +44,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 
+import static com.facebook.presto.plugin.phoenix.PhoenixErrorCode.PHOENIX_ERROR;
 import static com.facebook.presto.spi.StandardErrorCode.PERMISSION_DENIED;
 import static com.google.common.base.Preconditions.checkState;
 import static java.util.Objects.requireNonNull;
@@ -151,6 +154,28 @@ public class PhoenixMetadata
     public ColumnMetadata getColumnMetadata(ConnectorSession session, ConnectorTableHandle tableHandle, ColumnHandle columnHandle)
     {
         return ((PhoenixColumnHandle) columnHandle).getColumnMetadata();
+    }
+
+    @Override
+    public void createSchema(ConnectorSession session, String schemaName, Map<String, Object> properties)
+    {
+        try (PhoenixConnection connection = phoenixClient.getConnection()) {
+            phoenixClient.execute(connection, "CREATE SCHEMA " + schemaName);
+        }
+        catch (SQLException e) {
+            throw new PrestoException(PHOENIX_ERROR, e);
+        }
+    }
+
+    @Override
+    public void dropSchema(ConnectorSession session, String schemaName)
+    {
+        try (PhoenixConnection connection = phoenixClient.getConnection()) {
+            phoenixClient.execute(connection, "DROP SCHEMA " + schemaName);
+        }
+        catch (SQLException e) {
+            throw new PrestoException(PHOENIX_ERROR, e);
+        }
     }
 
     @Override

@@ -84,7 +84,7 @@ public class PhoenixPageSource
         this.pageBuilder = new PageBuilder(columnTypes);
 
         try {
-            connection = ((PhoenixClient) phoenixClient).getConnection();
+            connection = phoenixClient.getConnection();
 
             String inputQuery = ((PhoenixClient) phoenixClient).buildSql(connection,
                     split.getCatalogName(),
