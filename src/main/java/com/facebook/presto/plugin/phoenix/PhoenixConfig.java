@@ -22,7 +22,7 @@ import java.util.Properties;
 
 public class PhoenixConfig
 {
-    private static final Splitter CONNECTION_PROPERTIES_SPLITTER = Splitter.on(',').trimResults().omitEmptyStrings();
+    private static final Splitter CONNECTION_PROPERTIES_SPLITTER = Splitter.on(';').trimResults().omitEmptyStrings();
 
     private Properties connectionProperties = new Properties();
     private String connectionUrl;
