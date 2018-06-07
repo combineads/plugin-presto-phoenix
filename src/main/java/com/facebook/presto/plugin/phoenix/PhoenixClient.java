@@ -280,18 +280,18 @@ public class PhoenixClient
         String tableName = schemaTableName.getTableName();
 
         try (PhoenixConnection connection = getConnection()) {
-            String inputQuery = buildSql(connection,
+            final QueryPlan queryPlan = getQueryPlan(connection,
                     handle.getCatalogName(),
                     schemaName,
                     tableName,
                     layoutHandle.getTupleDomain(),
                     getColumns(handle, false));
-
-            final QueryPlan queryPlan = getQueryPlan(connection, inputQuery);
             final List<KeyRange> splits = new LinkedList<>();
 
             for (List<Scan> scans : queryPlan.getScans()) {
-                splits.add(KeyRange.getKeyRange(scans.get(0).getStartRow(), scans.get(scans.size() - 1).getStopRow()));
+                for (Scan scan : scans) {
+                    splits.add(KeyRange.getKeyRange(scan.getStartRow(), scan.getStopRow()));
+                }
             }
 
             byte[] hbaseTableName = queryPlan.getTableRef().getTable().getPhysicalName().getBytes();
@@ -321,22 +321,28 @@ public class PhoenixClient
                         addresses);
             }).collect(Collectors.toList()));
         }
-        catch (IOException | InterruptedException | SQLException e) {
+        catch (SQLException e) {
             throw new PrestoException(PHOENIX_ERROR, e);
         }
     }
 
-    public PhoenixResultSet getResultSet(String inputQuery, KeyRange inputSplitKeyRange) throws Exception
+    public PhoenixResultSet getResultSet(PhoenixSplit split, List<PhoenixColumnHandle> columns) throws SQLException
     {
         List<Scan> inputSplitScans = null;
         QueryPlan queryPlan = null;
-
         try (PhoenixConnection connection = getConnection()) {
-            queryPlan = getQueryPlan(connection, inputQuery);
+            queryPlan = getQueryPlan(connection,
+                    split.getCatalogName(),
+                    split.getSchemaName(),
+                    split.getTableName(),
+                    split.getTupleDomain(),
+                    columns);
             for (List<Scan> scans : queryPlan.getScans()) {
-                if (KeyRange.getKeyRange(scans.get(0).getStartRow(), scans.get(scans.size() - 1).getStopRow()).equals(inputSplitKeyRange)) {
-                    inputSplitScans = scans;
-                    break;
+                for (Scan scan : scans) {
+                    if (KeyRange.getKeyRange(scan.getStartRow(), scan.getStopRow()).equals(split.getKeyRange())) {
+                        inputSplitScans = scans;
+                        break;
+                    }
                 }
             }
         }
@@ -396,13 +402,12 @@ public class PhoenixClient
         return phxConn;
     }
 
-    public String buildSql(PhoenixConnection connection,
+    private QueryPlan getQueryPlan(PhoenixConnection connection,
             String catalogName,
             String schemaName,
             String tableName,
             TupleDomain<ColumnHandle> tupleDomain,
             List<PhoenixColumnHandle> columnHandles)
-            throws SQLException, IOException, InterruptedException
     {
         String phoenixTableName = TableUtils.normalizeTableName(tableName);
         List<PhoenixColumnHandle> dynamicColumnHandlers = getDynamicColumns(tableName);
@@ -411,19 +416,15 @@ public class PhoenixClient
             phoenixTableName += "(" + Joiner.on(',').join(dynamicColumns) + ")";
         }
 
-        return new QueryBuilder().buildSql(
-                connection,
-                catalogName,
-                schemaName,
-                phoenixTableName,
-                columnHandles,
-                tupleDomain);
-    }
-
-    public QueryPlan getQueryPlan(PhoenixConnection connection, String inputQuery)
-    {
-        requireNonNull(inputQuery, "inputQuery is null");
         try (Statement statement = connection.createStatement()) {
+            String inputQuery = new QueryBuilder().buildSql(
+                    connection,
+                    catalogName,
+                    schemaName,
+                    phoenixTableName,
+                    columnHandles,
+                    tupleDomain);
+
             final PhoenixStatement phoenixStmt = statement.unwrap(PhoenixStatement.class);
             final QueryPlan queryPlan = phoenixStmt.optimizeQuery(inputQuery);
             queryPlan.iterator(MapReduceParallelScanGrouper.getInstance());
@@ -597,7 +598,7 @@ public class PhoenixClient
                 handle.getTableName()));
     }
 
-    protected ResultSet getTables(PhoenixConnection connection, String schemaName, String tableName)
+    private ResultSet getTables(PhoenixConnection connection, String schemaName, String tableName)
             throws SQLException
     {
         DatabaseMetaData metadata = connection.getMetaData();
@@ -611,7 +612,7 @@ public class PhoenixClient
                 });
     }
 
-    protected SchemaTableName getSchemaTableName(ResultSet resultSet)
+    private SchemaTableName getSchemaTableName(ResultSet resultSet)
             throws SQLException
     {
         return new SchemaTableName(

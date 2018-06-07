@@ -24,7 +24,6 @@ import com.facebook.presto.spi.type.RealType;
 import com.facebook.presto.spi.type.StandardTypes;
 import com.facebook.presto.spi.type.Type;
 import io.airlift.slice.Slice;
-import org.apache.phoenix.jdbc.PhoenixConnection;
 import org.apache.phoenix.jdbc.PhoenixResultSet;
 import org.apache.phoenix.schema.tuple.ResultTuple;
 import org.joda.time.chrono.ISOChronology;
@@ -68,7 +67,6 @@ public class PhoenixPageSource
     private final List<Type> columnTypes;
     private final PageBuilder pageBuilder;
 
-    private final PhoenixConnection connection;
     private final PhoenixResultSet resultSet;
 
     private boolean closed;
@@ -82,20 +80,10 @@ public class PhoenixPageSource
         this.columnNames = columns.stream().map(PhoenixColumnHandle::getColumnName).collect(toList());
         this.columnTypes = columns.stream().map(PhoenixColumnHandle::getColumnType).collect(toList());
         this.pageBuilder = new PageBuilder(columnTypes);
-
         try {
-            connection = phoenixClient.getConnection();
-
-            String inputQuery = ((PhoenixClient) phoenixClient).buildSql(connection,
-                    split.getCatalogName(),
-                    split.getSchemaName(),
-                    split.getTableName(),
-                    split.getTupleDomain(),
-                    columns);
-
-            resultSet = phoenixClient.getResultSet(inputQuery, split.getKeyRange());
+            this.resultSet = phoenixClient.getResultSet(split, columns);
         }
-        catch (Exception e) {
+        catch (SQLException e) {
             throw handleSqlException(e);
         }
     }
@@ -309,14 +297,6 @@ public class PhoenixPageSource
             }
         }
 
-        if (this.connection != null) {
-            try {
-                this.connection.close();
-            }
-            catch (SQLException e) {
-                throw new RuntimeException(e);
-            }
-        }
         nanoEnd = System.nanoTime();
     }
 
