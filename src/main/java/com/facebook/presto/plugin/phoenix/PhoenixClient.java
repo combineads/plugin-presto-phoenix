@@ -427,6 +427,8 @@ public class PhoenixClient
 
             final PhoenixStatement phoenixStmt = statement.unwrap(PhoenixStatement.class);
             final QueryPlan queryPlan = phoenixStmt.optimizeQuery(inputQuery);
+            byte[] tableNameBytes = queryPlan.getTableRef().getTable().getPhysicalName().getBytes();
+            queryPlan.getContext().getConnection().getQueryServices().clearTableRegionCache(tableNameBytes);
             queryPlan.iterator(MapReduceParallelScanGrouper.getInstance());
             return queryPlan;
         }
