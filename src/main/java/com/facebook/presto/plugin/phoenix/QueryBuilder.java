@@ -101,7 +101,7 @@ public class QueryBuilder
                 .map(PhoenixColumnHandle::getColumnName)
                 .collect(joining(", "));
 
-        sql.append("SELECT ");
+        sql.append("SELECT /*+ NO_INDEX */ ");
         sql.append(columnNames);
         if (columns.isEmpty()) {
             sql.append("null");
