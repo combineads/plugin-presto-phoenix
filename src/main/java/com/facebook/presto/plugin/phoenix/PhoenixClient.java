@@ -345,16 +345,6 @@ public class PhoenixClient
                     }
                 }
             }
-            if (inputSplitScans == null) {
-                for (List<Scan> scans : queryPlan.getScans()) {
-                    for (Scan scan : scans) {
-                        if (KeyRange.getKeyRange(scan.getStartRow(), scan.getStopRow()).equals(split.getKeyRange())) {
-                            inputSplitScans = scans;
-                            log.warn("Can't find scan[table key range: %s, split key range: %s].", KeyRange.getKeyRange(scan.getStartRow(), scan.getStopRow()).toString(), split.getKeyRange().toString());
-                        }
-                    }
-                }
-            }
         }
         catch (SQLException e) {
             throw new PrestoException(PHOENIX_ERROR, e);
