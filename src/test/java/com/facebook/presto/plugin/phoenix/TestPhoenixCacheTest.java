@@ -29,7 +29,7 @@ public class TestPhoenixCacheTest
     }
 
     @Test(invocationCount = 5)
-    public void tesdtMetaCacahe() throws InterruptedException
+    public void testMetaCacahe() throws InterruptedException
     {
         String tableName = "TEST_META_CACHE";
         assertUpdate("CREATE TABLE " + tableName + "(ENTRY VARCHAR, DUMMY1 VARCHAR, DUMMY2 VARCHAR) WITH (ROWKEYS = ARRAY['ENTRY'], UPDATE_CACHE_FREQUENCY=0)");
@@ -44,7 +44,7 @@ public class TestPhoenixCacheTest
     }
 
     @Test(invocationCount = 5)
-    public void tesdtDifferentColumnNameMetaCacahe() throws InterruptedException
+    public void testDifferentColumnNameMetaCacahe() throws InterruptedException
     {
         String tableName = "TEST_META_CACHE";
         assertUpdate("CREATE TABLE " + tableName + "(ENTRY VARCHAR, DUMMY1 VARCHAR, DUMMY2 VARCHAR) WITH (ROWKEYS = ARRAY['ENTRY'], UPDATE_CACHE_FREQUENCY=0)");
@@ -59,7 +59,7 @@ public class TestPhoenixCacheTest
     }
 
     @Test(invocationCount = 5)
-    public void tesdtDynamicColumnNameMetaCacahe() throws InterruptedException
+    public void testDynamicColumnNameMetaCacahe() throws InterruptedException
     {
         String tableName = "TEST_META_CACHE";
         String dynamicTableName = "\"TEST_META_CACHE$DCOL1 VARCHAR,DCOL2 VARCHAR\"";
