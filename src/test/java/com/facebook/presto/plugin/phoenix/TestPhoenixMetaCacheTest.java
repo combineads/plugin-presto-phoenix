@@ -13,14 +13,14 @@
  */
 package com.facebook.presto.plugin.phoenix;
 
-import com.facebook.presto.tests.AbstractTestIntegrationSmokeTest;
+import com.facebook.presto.tests.AbstractTestQueryFramework;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import org.testng.annotations.Test;
 
 @Test(singleThreaded = true)
 public class TestPhoenixMetaCacheTest
-        extends AbstractTestIntegrationSmokeTest
+        extends AbstractTestQueryFramework
 {
     public TestPhoenixMetaCacheTest()
             throws Exception
