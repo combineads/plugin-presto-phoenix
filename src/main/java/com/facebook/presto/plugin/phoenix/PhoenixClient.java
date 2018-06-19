@@ -517,6 +517,7 @@ public class PhoenixClient
             PhoenixTableProperties.getVersions(tableProperties).ifPresent(value -> talbeOptions.add(HConstants.VERSIONS + "=" + value));
             PhoenixTableProperties.getMinVersions(tableProperties).ifPresent(value -> talbeOptions.add(HColumnDescriptor.MIN_VERSIONS + "=" + value));
             PhoenixTableProperties.getCompression(tableProperties).ifPresent(value -> talbeOptions.add(HColumnDescriptor.COMPRESSION + "='" + value + "'"));
+            PhoenixTableProperties.getCompression(tableProperties).ifPresent(value -> talbeOptions.add(HColumnDescriptor.DATA_BLOCK_ENCODING + "='" + value + "'"));
             PhoenixTableProperties.getTimeToLive(tableProperties).ifPresent(value -> talbeOptions.add(HColumnDescriptor.TTL + "=" + value));
             Joiner.on(", \n ").appendTo(sql, talbeOptions.build());
 
@@ -673,7 +674,9 @@ public class PhoenixClient
                 properties.put(PhoenixTableProperties.DEFAULT_COLUMN_FAMILY, defaultFamilyName);
             }
 
-            properties.put(PhoenixTableProperties.UPDATE_CACHE_FREQUENCY, table.getUpdateCacheFrequency());
+            if (table.getUpdateCacheFrequency() != 0) {
+                properties.put(PhoenixTableProperties.UPDATE_CACHE_FREQUENCY, table.getUpdateCacheFrequency());
+            }
 
             HTableDescriptor tableDesc = admin.getTableDescriptor(table.getPhysicalName().getBytes());
 
@@ -691,6 +694,9 @@ public class PhoenixClient
                     }
                     if (!columnFamily.getCompression().toString().equals("NONE")) {
                         properties.put(PhoenixTableProperties.COMPRESSION, columnFamily.getCompression().toString());
+                    }
+                    if (!columnFamily.getDataBlockEncoding().toString().equals("NONE")) {
+                        properties.put(PhoenixTableProperties.DATA_BLOCK_ENCODING, columnFamily.getDataBlockEncoding().toString());
                     }
                     if (columnFamily.getTimeToLive() < FOREVER) {
                         properties.put(PhoenixTableProperties.TTL, columnFamily.getTimeToLive());

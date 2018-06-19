@@ -51,6 +51,7 @@ public final class PhoenixTableProperties
     public static final String VERSIONS = "versions";
     public static final String MIN_VERSIONS = "min_versions";
     public static final String COMPRESSION = "compression";
+    public static final String DATA_BLOCK_ENCODING = "data_block_encoding";
     public static final String TTL = "ttl";
 
     private final List<PropertyMetadata<?>> tableProperties;
@@ -118,6 +119,11 @@ public final class PhoenixTableProperties
                 stringSessionProperty(
                         COMPRESSION,
                         "Compression is compression of HBase blocks using SNAPPY, GZIP, LZ, and others.",
+                        null,
+                        false),
+                stringSessionProperty(
+                        DATA_BLOCK_ENCODING,
+                        "NONE, PREFIX, DIFF or FAST_DIFF to enable data block encoding for a block compression.",
                         null,
                         false),
                 integerSessionProperty(
@@ -253,6 +259,18 @@ public final class PhoenixTableProperties
         requireNonNull(tableProperties);
 
         String value = (String) tableProperties.get(COMPRESSION);
+        if (value == null) {
+            return Optional.empty();
+        }
+
+        return Optional.of(value);
+    }
+
+    public static Optional<String> getDataBlockEncoding(Map<String, Object> tableProperties)
+    {
+        requireNonNull(tableProperties);
+
+        String value = (String) tableProperties.get(DATA_BLOCK_ENCODING);
         if (value == null) {
             return Optional.empty();
         }
