@@ -19,10 +19,10 @@ import com.google.common.collect.ImmutableMap;
 import org.testng.annotations.Test;
 
 @Test(singleThreaded = true)
-public class TestPhoenixCacheTest
+public class TestPhoenixMetaCacheTest
         extends AbstractTestIntegrationSmokeTest
 {
-    public TestPhoenixCacheTest()
+    public TestPhoenixMetaCacheTest()
             throws Exception
     {
         super(() -> PhoenixQueryRunner.createPhoenixQueryRunner(4, ImmutableMap.of(), ImmutableList.of()));
