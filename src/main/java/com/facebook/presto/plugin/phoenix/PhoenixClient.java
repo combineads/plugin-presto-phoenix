@@ -695,7 +695,7 @@ public class PhoenixClient
                     if (!columnFamily.getCompression().toString().equals("NONE")) {
                         properties.put(PhoenixTableProperties.COMPRESSION, columnFamily.getCompression().toString());
                     }
-                    if (!columnFamily.getDataBlockEncoding().toString().equals("NONE")) {
+                    if (!columnFamily.getDataBlockEncoding().toString().equals("FAST_DIFF")) {
                         properties.put(PhoenixTableProperties.DATA_BLOCK_ENCODING, columnFamily.getDataBlockEncoding().toString());
                     }
                     if (columnFamily.getTimeToLive() < FOREVER) {
