@@ -517,7 +517,7 @@ public class PhoenixClient
             PhoenixTableProperties.getVersions(tableProperties).ifPresent(value -> talbeOptions.add(HConstants.VERSIONS + "=" + value));
             PhoenixTableProperties.getMinVersions(tableProperties).ifPresent(value -> talbeOptions.add(HColumnDescriptor.MIN_VERSIONS + "=" + value));
             PhoenixTableProperties.getCompression(tableProperties).ifPresent(value -> talbeOptions.add(HColumnDescriptor.COMPRESSION + "='" + value + "'"));
-            PhoenixTableProperties.getCompression(tableProperties).ifPresent(value -> talbeOptions.add(HColumnDescriptor.DATA_BLOCK_ENCODING + "='" + value + "'"));
+            PhoenixTableProperties.getDataBlockEncoding(tableProperties).ifPresent(value -> talbeOptions.add(HColumnDescriptor.DATA_BLOCK_ENCODING + "='" + value + "'"));
             PhoenixTableProperties.getTimeToLive(tableProperties).ifPresent(value -> talbeOptions.add(HColumnDescriptor.TTL + "=" + value));
             Joiner.on(", \n ").appendTo(sql, talbeOptions.build());
 
