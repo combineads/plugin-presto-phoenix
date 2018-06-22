@@ -59,12 +59,14 @@ import org.apache.phoenix.jdbc.PhoenixStatement;
 import org.apache.phoenix.parse.PFunction;
 import org.apache.phoenix.query.KeyRange;
 import org.apache.phoenix.query.QueryConstants;
+import org.apache.phoenix.query.QueryServices;
 import org.apache.phoenix.schema.AmbiguousColumnException;
 import org.apache.phoenix.schema.ColumnNotFoundException;
 import org.apache.phoenix.schema.PColumn;
 import org.apache.phoenix.schema.PMetaData;
 import org.apache.phoenix.schema.PName;
 import org.apache.phoenix.schema.PTable;
+import org.apache.phoenix.schema.PTableRefFactory;
 import org.apache.phoenix.schema.PTableType;
 import org.apache.phoenix.schema.TableProperty;
 import org.apache.phoenix.schema.types.PDataType;
@@ -153,6 +155,7 @@ public class PhoenixClient
         requireNonNull(config, "config is null");
         connectionUrl = config.getConnectionUrl();
         connectionProperties = new Properties();
+        connectionProperties.setProperty(QueryServices.CLIENT_CACHE_ENCODING, PTableRefFactory.Encoding.PROTOBUF.toString());
         connectionProperties.putAll(config.getConnectionProperties());
 
         this.typeManager = requireNonNull(typeManager, "typeManager is null");
