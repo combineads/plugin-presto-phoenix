@@ -39,6 +39,9 @@ public final class PhoenixSessionProperties
     private static final String DUPLICATE_KEY_UPDATE_COLUMNS = "duplicate_key_update_columns";
     private static final Splitter DUPLICATE_KEY_UPDATE_COLUMNS_SPLITTER = Splitter.on(" and ").trimResults();
 
+    private static final String UPSERT_COLUMNS = "upsert_columns";
+    private static final Splitter UPSERT_COLUMNS_SPLITTER = Splitter.on(";").trimResults();
+
     private final List<PropertyMetadata<?>> sessionProperties;
 
     @Inject
@@ -47,6 +50,11 @@ public final class PhoenixSessionProperties
         sessionProperties = ImmutableList.of(
                 stringSessionProperty(
                         DUPLICATE_KEY_UPDATE_COLUMNS,
+                        "A comma-delimited list of Presto columns that the row will be updated.",
+                        null,
+                        false),
+                stringSessionProperty(
+                        UPSERT_COLUMNS,
                         "A comma-delimited list of Presto columns that the row will be updated.",
                         null,
                         false));
@@ -66,5 +74,16 @@ public final class PhoenixSessionProperties
             return ImmutableList.of();
         }
         return ImmutableList.copyOf(DUPLICATE_KEY_UPDATE_COLUMNS_SPLITTER.split(value.toLowerCase(ENGLISH)));
+    }
+
+    public static List<String> getUpsertColumns(ConnectorSession session)
+    {
+        requireNonNull(session);
+
+        String value = session.getProperty(UPSERT_COLUMNS, String.class);
+        if (value == null) {
+            return ImmutableList.of();
+        }
+        return ImmutableList.copyOf(UPSERT_COLUMNS_SPLITTER.split(value.toLowerCase(ENGLISH)));
     }
 }
