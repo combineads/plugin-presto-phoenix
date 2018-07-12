@@ -47,6 +47,7 @@ public final class PhoenixTableProperties
     public static final String IMMUTABLE_ROWS = "immutable_rows";
     public static final String DEFAULT_COLUMN_FAMILY = "default_column_family";
     public static final String UPDATE_CACHE_FREQUENCY = "update_cache_frequency";
+    public static final String APPEND_ONLY_SCHEMA = "APPEND_ONLY_SCHEMA";
     public static final String BLOOMFILTER = "bloomfilter";
     public static final String VERSIONS = "versions";
     public static final String MIN_VERSIONS = "min_versions";
@@ -99,6 +100,11 @@ public final class PhoenixTableProperties
                 longSessionProperty(
                         UPDATE_CACHE_FREQUENCY,
                         "UPDATE_CACHE_FREQUENCY determines how often an RPC is done to ensure you’re seeing the latest schema.",
+                        null,
+                        false),
+                booleanSessionProperty(
+                        APPEND_ONLY_SCHEMA,
+                        "boolean option (available as of Phoenix 4.8) when true declares that columns will only be added but never removed from a table.",
                         null,
                         false),
                 stringSessionProperty(
@@ -211,6 +217,18 @@ public final class PhoenixTableProperties
         requireNonNull(tableProperties);
 
         Long value = (Long) tableProperties.get(UPDATE_CACHE_FREQUENCY);
+        if (value == null) {
+            return Optional.empty();
+        }
+
+        return Optional.of(value);
+    }
+
+    public static Optional<Boolean> getAppendOnlySchema(Map<String, Object> tableProperties)
+    {
+        requireNonNull(tableProperties);
+
+        Boolean value = (Boolean) tableProperties.get(APPEND_ONLY_SCHEMA);
         if (value == null) {
             return Optional.empty();
         }

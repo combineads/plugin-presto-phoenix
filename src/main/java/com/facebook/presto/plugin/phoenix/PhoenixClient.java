@@ -516,6 +516,7 @@ public class PhoenixClient
             PhoenixTableProperties.getImmutableRows(tableProperties).ifPresent(value -> talbeOptions.add(TableProperty.IMMUTABLE_ROWS + "=" + value));
             PhoenixTableProperties.getDefaultColumnFamily(tableProperties).ifPresent(value -> talbeOptions.add(TableProperty.DEFAULT_COLUMN_FAMILY + "=" + value));
             PhoenixTableProperties.getUpdateCacheFrequency(tableProperties).ifPresent(value -> talbeOptions.add(TableProperty.UPDATE_CACHE_FREQUENCY + "=" + value));
+            PhoenixTableProperties.getAppendOnlySchema(tableProperties).ifPresent(value -> talbeOptions.add(TableProperty.APPEND_ONLY_SCHEMA + "=" + value));
             PhoenixTableProperties.getBloomfilter(tableProperties).ifPresent(value -> talbeOptions.add(HColumnDescriptor.BLOOMFILTER + "='" + value + "'"));
             PhoenixTableProperties.getVersions(tableProperties).ifPresent(value -> talbeOptions.add(HConstants.VERSIONS + "=" + value));
             PhoenixTableProperties.getMinVersions(tableProperties).ifPresent(value -> talbeOptions.add(HColumnDescriptor.MIN_VERSIONS + "=" + value));
@@ -679,6 +680,10 @@ public class PhoenixClient
 
             if (table.getUpdateCacheFrequency() != 0) {
                 properties.put(PhoenixTableProperties.UPDATE_CACHE_FREQUENCY, table.getUpdateCacheFrequency());
+            }
+
+            if (table.isAppendOnlySchema()) {
+                properties.put(PhoenixTableProperties.APPEND_ONLY_SCHEMA, table.isAppendOnlySchema());
             }
 
             HTableDescriptor tableDesc = admin.getTableDescriptor(table.getPhysicalName().getBytes());
