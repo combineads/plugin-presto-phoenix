@@ -86,6 +86,13 @@ public class PhoenixPageSink
 
         hasRowkey = ROWKEY.equalsIgnoreCase(columnNames.get(0));
         List<String> duplicateKeyUpdateColumns = PhoenixSessionProperties.getDuplicateKeyUpdateColumns(session);
+        List<String> upsertColumns = PhoenixSessionProperties.getUpsertColumns(session);
+
+        for (String upsertColumn : upsertColumns) {
+            if (!columnNames.contains(upsertColumn)) {
+                throw new PrestoException(PHOENIX_ERROR, String.format("Upsert column name does not exist in target table: %s", upsertColumn));
+            }
+        }
 
         dupKeyColumns = columnNames.stream().filter(column -> duplicateKeyUpdateColumns.contains(column)).collect(Collectors.toList());
 

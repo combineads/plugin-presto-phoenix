@@ -59,12 +59,14 @@ import org.apache.phoenix.jdbc.PhoenixStatement;
 import org.apache.phoenix.parse.PFunction;
 import org.apache.phoenix.query.KeyRange;
 import org.apache.phoenix.query.QueryConstants;
+import org.apache.phoenix.query.QueryServices;
 import org.apache.phoenix.schema.AmbiguousColumnException;
 import org.apache.phoenix.schema.ColumnNotFoundException;
 import org.apache.phoenix.schema.PColumn;
 import org.apache.phoenix.schema.PMetaData;
 import org.apache.phoenix.schema.PName;
 import org.apache.phoenix.schema.PTable;
+import org.apache.phoenix.schema.PTableRefFactory;
 import org.apache.phoenix.schema.PTableType;
 import org.apache.phoenix.schema.TableProperty;
 import org.apache.phoenix.schema.types.PDataType;
@@ -153,6 +155,7 @@ public class PhoenixClient
         requireNonNull(config, "config is null");
         connectionUrl = config.getConnectionUrl();
         connectionProperties = new Properties();
+        connectionProperties.setProperty(QueryServices.CLIENT_CACHE_ENCODING, PTableRefFactory.Encoding.PROTOBUF.toString());
         connectionProperties.putAll(config.getConnectionProperties());
 
         this.typeManager = requireNonNull(typeManager, "typeManager is null");
@@ -513,6 +516,7 @@ public class PhoenixClient
             PhoenixTableProperties.getImmutableRows(tableProperties).ifPresent(value -> talbeOptions.add(TableProperty.IMMUTABLE_ROWS + "=" + value));
             PhoenixTableProperties.getDefaultColumnFamily(tableProperties).ifPresent(value -> talbeOptions.add(TableProperty.DEFAULT_COLUMN_FAMILY + "=" + value));
             PhoenixTableProperties.getUpdateCacheFrequency(tableProperties).ifPresent(value -> talbeOptions.add(TableProperty.UPDATE_CACHE_FREQUENCY + "=" + value));
+            PhoenixTableProperties.getAppendOnlySchema(tableProperties).ifPresent(value -> talbeOptions.add(TableProperty.APPEND_ONLY_SCHEMA + "=" + value));
             PhoenixTableProperties.getBloomfilter(tableProperties).ifPresent(value -> talbeOptions.add(HColumnDescriptor.BLOOMFILTER + "='" + value + "'"));
             PhoenixTableProperties.getVersions(tableProperties).ifPresent(value -> talbeOptions.add(HConstants.VERSIONS + "=" + value));
             PhoenixTableProperties.getMinVersions(tableProperties).ifPresent(value -> talbeOptions.add(HColumnDescriptor.MIN_VERSIONS + "=" + value));
@@ -676,6 +680,10 @@ public class PhoenixClient
 
             if (table.getUpdateCacheFrequency() != 0) {
                 properties.put(PhoenixTableProperties.UPDATE_CACHE_FREQUENCY, table.getUpdateCacheFrequency());
+            }
+
+            if (table.isAppendOnlySchema()) {
+                properties.put(PhoenixTableProperties.APPEND_ONLY_SCHEMA, table.isAppendOnlySchema());
             }
 
             HTableDescriptor tableDesc = admin.getTableDescriptor(table.getPhysicalName().getBytes());
