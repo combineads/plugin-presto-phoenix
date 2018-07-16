@@ -15,6 +15,7 @@ package com.facebook.presto.plugin.phoenix;
 
 import com.facebook.presto.spi.ColumnHandle;
 import com.facebook.presto.spi.ColumnMetadata;
+import com.facebook.presto.spi.ConnectorSession;
 import com.facebook.presto.spi.ConnectorSplitSource;
 import com.facebook.presto.spi.ConnectorTableMetadata;
 import com.facebook.presto.spi.FixedSplitSource;
@@ -39,8 +40,10 @@ import org.apache.hadoop.hbase.HColumnDescriptor;
 import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.HRegionLocation;
 import org.apache.hadoop.hbase.HTableDescriptor;
+import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.client.HBaseAdmin;
 import org.apache.hadoop.hbase.client.Scan;
+import org.apache.hadoop.hbase.protobuf.generated.HBaseProtos.SnapshotDescription;
 import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.phoenix.compile.QueryPlan;
 import org.apache.phoenix.coprocessor.BaseScannerRegionObserver;
@@ -464,15 +467,11 @@ public class PhoenixClient
 
         try (PhoenixConnection connection = getConnection()) {
             boolean uppercase = connection.getMetaData().storesUpperCaseIdentifiers();
-            if (uppercase) {
-                schema = schema.toUpperCase(ENGLISH);
-                table = table.toUpperCase(ENGLISH);
-            }
             String catalog = connection.getCatalog();
 
             StringBuilder sql = new StringBuilder()
                     .append("CREATE TABLE ")
-                    .append(getFullTableName(catalog, schema, table))
+                    .append(getPhoenixFullTableName(schema, table, uppercase))
                     .append(" (\n ");
             ImmutableList.Builder<String> columnNames = ImmutableList.builder();
             ImmutableList.Builder<Type> columnTypes = ImmutableList.builder();
@@ -595,14 +594,50 @@ public class PhoenixClient
         }
     }
 
-    public void rollbackCreateTable(PhoenixOutputTableHandle handle)
+    public void createSnapshotTable(ConnectorSession session, PhoenixOutputTableHandle handle)
     {
-        dropTable(new PhoenixTableHandle(
-                handle.getConnectorId(),
-                new SchemaTableName(handle.getSchemaName(), handle.getTableName()),
-                handle.getCatalogName(),
-                handle.getSchemaName(),
-                handle.getTableName()));
+        try (PhoenixConnection pconn = getConnection(); HBaseAdmin admin = pconn.getQueryServices().getAdmin()) {
+            boolean uppercase = pconn.getMetaData().storesUpperCaseIdentifiers();
+            String tableFullName = getPhoenixFullTableName(handle.getSchemaName(), handle.getTableName(), uppercase);
+
+            PTable table = getTable(pconn, tableFullName);
+            TableName physicalTableName = TableName.valueOf(table.getPhysicalName().getString());
+            String snapshotName = "presto_" + physicalTableName.getNameAsString().replace(':', '_') + "_" + session.getQueryId();
+
+            admin.snapshot(snapshotName, physicalTableName);
+            admin.flush(physicalTableName);
+        }
+        catch (Exception e) {
+            throw new PrestoException(PHOENIX_ERROR, String.format("Failed to create snapshot [%s]", e.getMessage()), e);
+        }
+    }
+
+    public void deleteSnapshotIfPresent(ConnectorSession session, PhoenixOutputTableHandle handle, boolean storeSnapshot)
+    {
+        try (PhoenixConnection pconn = getConnection(); HBaseAdmin admin = pconn.getQueryServices().getAdmin()) {
+            boolean uppercase = pconn.getMetaData().storesUpperCaseIdentifiers();
+            String tableFullName = getPhoenixFullTableName(handle.getSchemaName(), handle.getTableName(), uppercase);
+
+            PTable table = getTable(pconn, tableFullName);
+            TableName physicalTableName = TableName.valueOf(table.getPhysicalName().getString());
+            String snapshotName = "presto_" + physicalTableName.getNameAsString() + "_" + session.getQueryId();
+
+            List<SnapshotDescription> snapshots = admin.listSnapshots();
+            for (SnapshotDescription snapshot : snapshots) {
+                if (snapshotName.equals(snapshot.getName())) {
+                    if (storeSnapshot) {
+                        admin.disableTable(physicalTableName);
+                        admin.restoreSnapshot(snapshotName);
+                        admin.enableTable(physicalTableName);
+                    }
+
+                    admin.deleteSnapshot(snapshotName);
+                }
+            }
+        }
+        catch (Exception e) {
+            throw new PrestoException(PHOENIX_ERROR, String.format("Failed to delete snapshot [%s]", e.getMessage()), e);
+        }
     }
 
     private ResultSet getTables(PhoenixConnection connection, String schemaName, String tableName)
@@ -641,7 +676,7 @@ public class PhoenixClient
         ImmutableMap.Builder<String, Object> properties = ImmutableMap.builder();
 
         try (PhoenixConnection pconn = getConnection(); HBaseAdmin admin = pconn.getQueryServices().getAdmin()) {
-            PTable table = getTable(pconn, getFullTableName(handle.getCatalogName(), handle.getSchemaName(), handle.getTableName()));
+            PTable table = getTable(pconn, getPhoenixFullTableName(handle.getSchemaName(), handle.getTableName(), pconn.getMetaData().storesUpperCaseIdentifiers()));
 
             List<PColumn> pkColumns = table.getPKColumns();
             if (!pkColumns.isEmpty()) {
@@ -735,6 +770,21 @@ public class PhoenixClient
         }
         sb.append(table);
         return sb.toString();
+    }
+
+    private static String getPhoenixFullTableName(String schema, String table, boolean uppercase)
+    {
+        StringBuilder sb = new StringBuilder();
+        if (!isNullOrEmpty(schema)) {
+            sb.append(schema).append(".");
+        }
+        sb.append(TableUtils.normalizeTableName(table));
+        if (uppercase) {
+            return sb.toString().toUpperCase(ENGLISH);
+        }
+        else {
+            return sb.toString();
+        }
     }
 
     protected static String toSqlType(Type type)

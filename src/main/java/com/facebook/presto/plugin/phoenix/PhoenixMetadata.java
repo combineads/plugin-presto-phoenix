@@ -92,13 +92,11 @@ public class PhoenixMetadata
     @Override
     public ConnectorTableMetadata getTableMetadata(ConnectorSession session, ConnectorTableHandle table)
     {
-        return getTableMetadata(session, table, false);
+        return getTableMetadata(session, (PhoenixTableHandle) table, false);
     }
 
-    public ConnectorTableMetadata getTableMetadata(ConnectorSession session, ConnectorTableHandle table, boolean requiredRowkey)
+    public ConnectorTableMetadata getTableMetadata(ConnectorSession session, PhoenixTableHandle handle, boolean requiredRowkey)
     {
-        PhoenixTableHandle handle = (PhoenixTableHandle) table;
-
         ImmutableList.Builder<ColumnMetadata> columnMetadata = ImmutableList.builder();
         for (PhoenixColumnHandle column : phoenixClient.getColumns(handle, requiredRowkey)) {
             columnMetadata.add(column.getColumnMetadata());
@@ -201,8 +199,10 @@ public class PhoenixMetadata
     @Override
     public ConnectorOutputTableHandle beginCreateTable(ConnectorSession session, ConnectorTableMetadata tableMetadata, Optional<ConnectorNewTableLayout> layout)
     {
+        checkNoRollback();
+
         PhoenixOutputTableHandle handle = phoenixClient.createTable(tableMetadata);
-        setRollback(() -> phoenixClient.rollbackCreateTable(handle));
+        setRollback(() -> rollbackCreateTable(handle));
         return handle;
     }
 
@@ -213,9 +213,51 @@ public class PhoenixMetadata
         return Optional.empty();
     }
 
+    public void rollbackCreateTable(PhoenixOutputTableHandle handle)
+    {
+        phoenixClient.dropTable(new PhoenixTableHandle(
+                handle.getConnectorId(),
+                new SchemaTableName(handle.getSchemaName(), handle.getTableName()),
+                handle.getCatalogName(),
+                handle.getSchemaName(),
+                handle.getTableName()));
+    }
+
+    @Override
+    public ConnectorInsertTableHandle beginInsert(ConnectorSession session, ConnectorTableHandle tableHandle)
+    {
+        checkNoRollback();
+
+        PhoenixTableHandle handle = (PhoenixTableHandle) tableHandle;
+        PhoenixOutputTableHandle outputTableHandle = phoenixClient.beginInsertTable(getTableMetadata(session, handle, true));
+        phoenixClient.createSnapshotTable(session, outputTableHandle);
+        setRollback(() -> rollbackInsert(session, outputTableHandle));
+        return outputTableHandle;
+    }
+
+    @Override
+    public Optional<ConnectorOutputMetadata> finishInsert(ConnectorSession session, ConnectorInsertTableHandle tableHandle, Collection<Slice> fragments)
+    {
+        clearRollback();
+
+        phoenixClient.deleteSnapshotIfPresent(session, (PhoenixOutputTableHandle) tableHandle, false);
+
+        return Optional.empty();
+    }
+
+    private void rollbackInsert(ConnectorSession session, PhoenixOutputTableHandle handle)
+    {
+        phoenixClient.deleteSnapshotIfPresent(session, handle, true);
+    }
+
     private void setRollback(Runnable action)
     {
         checkState(rollbackAction.compareAndSet(null, action), "rollback action is already set");
+    }
+
+    private void checkNoRollback()
+    {
+        checkState(rollbackAction.get() == null, "Cannot begin a new write while in an existing one");
     }
 
     private void clearRollback()
@@ -226,18 +268,6 @@ public class PhoenixMetadata
     public void rollback()
     {
         Optional.ofNullable(rollbackAction.getAndSet(null)).ifPresent(Runnable::run);
-    }
-
-    @Override
-    public ConnectorInsertTableHandle beginInsert(ConnectorSession session, ConnectorTableHandle tableHandle)
-    {
-        return phoenixClient.beginInsertTable(getTableMetadata(session, tableHandle, true));
-    }
-
-    @Override
-    public Optional<ConnectorOutputMetadata> finishInsert(ConnectorSession session, ConnectorInsertTableHandle tableHandle, Collection<Slice> fragments)
-    {
-        return Optional.empty();
     }
 
     @Override
