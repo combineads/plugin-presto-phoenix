@@ -47,7 +47,7 @@ public final class PhoenixTableProperties
     public static final String IMMUTABLE_ROWS = "immutable_rows";
     public static final String DEFAULT_COLUMN_FAMILY = "default_column_family";
     public static final String UPDATE_CACHE_FREQUENCY = "update_cache_frequency";
-    public static final String APPEND_ONLY_SCHEMA = "APPEND_ONLY_SCHEMA";
+    public static final String APPEND_ONLY_SCHEMA = "append_only_schema";
     public static final String BLOOMFILTER = "bloomfilter";
     public static final String VERSIONS = "versions";
     public static final String MIN_VERSIONS = "min_versions";
