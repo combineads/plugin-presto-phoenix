@@ -39,6 +39,6 @@ public class TestPhoenixSnapshotTest
         assertUpdate("INSERT INTO TEST_DUMMY_TRANS(ENTRY, VAL1) VALUES ('ROW1', 2), ('ROW6', 6)", 5);
         assertUpdate("ROLLBACK");
         assertQuery("SELECT ENTRY, VAL1 FROM TEST_DUMMY_TRANS WHERE ENTRY = 'ROW1'", "SELECT 'ROW1', 1");
-        assertQuery("SELECT COUNT(1) AS CNT FROM TEST_DUMMY_TRANS", "SELECT 5S");
+        assertQuery("SELECT COUNT(1) AS CNT FROM TEST_DUMMY_TRANS", "SELECT 5");
     }
 }
