@@ -61,6 +61,7 @@ public final class PhoenixQueryRunner
 
         Map<String, String> properties = ImmutableMap.<String, String>builder()
                 .put("connection-url", server.getJdbcUrl())
+                .put("connection-properties", "phoenix.schema.isNamespaceMappingEnabled=true")
                 .put("allow-drop-table", "true")
                 .build();
 
