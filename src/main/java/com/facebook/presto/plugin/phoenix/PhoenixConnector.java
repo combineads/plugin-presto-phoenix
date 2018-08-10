@@ -70,6 +70,12 @@ public class PhoenixConnector
     }
 
     @Override
+    public boolean isSingleStatementWritesOnly()
+    {
+        return true;
+    }
+
+    @Override
     public ConnectorTransactionHandle beginTransaction(IsolationLevel isolationLevel, boolean readOnly)
     {
         checkConnectorSupports(READ_COMMITTED, isolationLevel);
