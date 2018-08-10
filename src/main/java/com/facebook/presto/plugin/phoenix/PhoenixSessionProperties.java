@@ -22,7 +22,7 @@ import javax.inject.Inject;
 
 import java.util.List;
 
-import static com.facebook.presto.spi.session.PropertyMetadata.stringSessionProperty;
+import static com.facebook.presto.spi.session.PropertyMetadata.stringProperty;
 import static java.util.Locale.ENGLISH;
 import static java.util.Objects.requireNonNull;
 
@@ -48,12 +48,12 @@ public final class PhoenixSessionProperties
     public PhoenixSessionProperties()
     {
         sessionProperties = ImmutableList.of(
-                stringSessionProperty(
+                stringProperty(
                         DUPLICATE_KEY_UPDATE_COLUMNS,
                         "A comma-delimited list of Presto columns that the row will be updated.",
                         null,
                         false),
-                stringSessionProperty(
+                stringProperty(
                         UPSERT_COLUMNS,
                         "A comma-delimited list of Presto columns that the row will be updated.",
                         null,
