@@ -120,7 +120,7 @@ public class TestPhoenixIntegrationSmokeTest
 
         assertUpdate(query, 1);
 
-        MaterializedResult results = getQueryRunner().execute(getSession(), "SELECT * FROM test_types_table where CAST('12345678901234567890.0123456789' AS DECIMAL(30,10)) = col_decimal_long").toTestTypes();
+        MaterializedResult results = getQueryRunner().execute(getSession(), "SELECT * FROM test_types_table where CAST('12345678901234567890.0123456789' AS DECIMAL(30,10)) = col_decimal_long and col_timestamp >= TIMESTAMP '1980-05-01 11:22:33.456'").toTestTypes();
         assertEquals(results.getRowCount(), 1);
         MaterializedRow row = results.getMaterializedRows().get(0);
         assertEquals(row.getField(0), "foo");

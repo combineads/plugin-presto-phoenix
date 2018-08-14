@@ -46,7 +46,6 @@ import java.sql.Date;
 import java.sql.SQLException;
 import java.sql.Time;
 import java.sql.Timestamp;
-import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -337,10 +336,13 @@ public class QueryBuilder
                 return "'" + ((String) parameter).replace("'", "''") + "'";
             }
             else if (parameter instanceof Timestamp) {
-                return "to_timestamp('" + new SimpleDateFormat("MM/dd/yyyy HH:mm:ss.SSS").format(parameter) + "', 'mm/dd/yyyy hh24:mi:ss.ff3')";
+                return "timestamp '" + parameter.toString() + "'";
             }
             else if (parameter instanceof Date) {
-                return "to_date('" + new SimpleDateFormat("MM/dd/yyyy HH:mm:ss").format(parameter) + "', 'mm/dd/yyyy hh24:mi:ss')";
+                return "date '" + parameter.toString() + "'";
+            }
+            else if (parameter instanceof Time) {
+                return "time '" + parameter.toString() + "'";
             }
             else if (parameter instanceof Boolean) {
                 return ((Boolean) parameter).booleanValue() ? "1" : "0";
